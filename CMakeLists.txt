@@ -1,0 +1,21 @@
+cmake_minimum_required(VERSION 3.23)
+project(OOP)
+
+set(CMAKE_CXX_STANDARD 17)
+
+
+set(SDL3_DIR "C:/Users/Asus/CLionProjects/SDL3-3.4.10/i686-w64-mingw32")
+
+include_directories("${SDL3_DIR}/include")
+link_directories("${SDL3_DIR}/lib")
+
+add_executable(OOP main.cpp)
+
+
+target_link_libraries(OOP "${SDL3_DIR}/lib/libSDL3.dll.a")
+
+
+add_custom_command(TARGET OOP POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${SDL3_DIR}/bin/SDL3.dll"
+        $<TARGET_FILE_DIR:OOP>)
