@@ -7,4 +7,8 @@ int main(int argc, char* argv[]) {
     SDL_DestroyWindow(win);
     SDL_Quit();
     return 0;
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 46b0a3123dea584746bb590793b04d39d57df73e
