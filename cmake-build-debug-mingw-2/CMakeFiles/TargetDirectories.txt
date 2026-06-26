@@ -1,0 +1,3 @@
+C:/Users/Asus/CLionProjects/OOP/cmake-build-debug-mingw-2/CMakeFiles/OOP.dir
+C:/Users/Asus/CLionProjects/OOP/cmake-build-debug-mingw-2/CMakeFiles/edit_cache.dir
+C:/Users/Asus/CLionProjects/OOP/cmake-build-debug-mingw-2/CMakeFiles/rebuild_cache.dir

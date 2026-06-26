@@ -1,0 +1,14 @@
+# Target labels
+ sdl3_ttf-populate
+# Source files and their labels
+C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/CMakeFiles/sdl3_ttf-populate
+C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/CMakeFiles/sdl3_ttf-populate.rule
+C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/CMakeFiles/sdl3_ttf-populate-complete.rule
+C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-build.rule
+C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-configure.rule
+C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-download.rule
+C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-install.rule
+C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-mkdir.rule
+C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-patch.rule
+C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-test.rule
+C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-update.rule

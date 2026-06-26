@@ -1,0 +1,21 @@
+# ninja log v5
+0	119	8042037017629026	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-mkdir	1124feec74bef98c
+0	119	8042037017629026	C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-mkdir	1124feec74bef98c
+120	353681	8042040553233127	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-download	c26b7904460f8ef6
+120	353681	8042040553233127	C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-download	c26b7904460f8ef6
+353681	356914	0	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-update	843fec91f0312476
+353681	356914	0	C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-update	843fec91f0312476
+356915	357011	8042040586546673	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-patch	41b4b0723f509d0b
+356915	357011	8042040586546673	C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-patch	41b4b0723f509d0b
+357011	357103	8042040587468375	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-configure	28626d637dc53e23
+357011	357103	8042040587468375	C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-configure	28626d637dc53e23
+357103	357199	8042040588428994	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-build	721fd1ab9768df0
+357103	357199	8042040588428994	C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-build	721fd1ab9768df0
+357200	357295	8042040589391795	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-install	c00694a1ca8dcdaa
+357200	357295	8042040589391795	C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-install	c00694a1ca8dcdaa
+357296	357401	8042040590441140	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-test	ada89dc767028742
+357296	357401	8042040590441140	C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-test	ada89dc767028742
+357402	357549	8042040591920618	CMakeFiles/sdl3-populate-complete	c40217e915e16604
+357402	357549	8042040591920618	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-done	c40217e915e16604
+357402	357549	8042040591920618	C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/CMakeFiles/sdl3-populate-complete	c40217e915e16604
+357402	357549	8042040591920618	C:/Users/Asus/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-done	c40217e915e16604

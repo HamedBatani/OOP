@@ -1,0 +1,6 @@
+# ninja log v5
+17	123	8042109034240871	CMakeFiles/OOP.dir/src/StartMenu.cpp.obj	b0b1981211b60e59
+12	308	8042109036074078	CMakeFiles/OOP.dir/src/Canvas.cpp.obj	ba7aa4145e04b6ef
+7	1358	8042109046575985	CMakeFiles/OOP.dir/src/CanvasRenderer.cpp.obj	5373da63138a3930
+3	87	8042111151455520	CMakeFiles/OOP.dir/src/main.cpp.obj	e426bee7899534e8
+87	387	8042111154392163	OOP.exe	b0297cbdd83fc7d8
