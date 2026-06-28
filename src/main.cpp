@@ -68,7 +68,7 @@ namespace {
     }
 
     TTF_Font* loadFont() {
-        const char* path = "C:\\Users\\bilgi\\OneDrive\\Desktop\\DejaVuSans.ttf";
+        const char* path = "C:\\Users\\Asus\\OneDrive\\Desktop\\DejaVuSans.ttf";
         TTF_Font* font = TTF_OpenFont(path, 24);
         if (!font) {
             std::cerr << "Font loading failed: " << SDL_GetError() << '\n';
