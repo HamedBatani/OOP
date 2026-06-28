@@ -28,10 +28,10 @@
 #ifndef SDL_TTF_TEXTENGINE_H_
 #define SDL_TTF_TEXTENGINE_H_
 
-#include <SDL3/SDL.h>
-#include <SDL3_ttf/SDL_ttf.h>
+#include "SDL3/SDL.h"
+#include "SDL3_ttf/SDL_ttf.h"
 
-#include <SDL3/SDL_begin_code.h>
+#include "SDL3/SDL_begin_code.h"
 
 /* Set up for C function definitions, even when using C++ */
 #ifdef __cplusplus
@@ -175,7 +175,7 @@ SDL_COMPILE_TIME_ASSERT(TTF_TextEngine_SIZE,
 #ifdef __cplusplus
 }
 #endif
-#include <SDL3/SDL_close_code.h>
+#include "SDL3/SDL_close_code.h"
 
 #endif /* SDL_TTF_TEXTENGINE_H_ */
 

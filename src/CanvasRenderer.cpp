@@ -1,3 +1,4 @@
+//canvasRenderer.cpp
 #include "CanvasRenderer.h"
 
 #include <iomanip>
@@ -100,4 +101,72 @@ void CanvasRenderer::renderSnapTest(std::ostream& output, const Point& rawMouseS
     printPoint(output, snappedScreenPoint);
     output << '\n';
     output << "Grid Spacing: " << canvas_.grid().spacing() << '\n';
+}
+// پیاده‌سازی متد renderSDL در انتهای فایل CanvasRenderer.cpp
+
+void CanvasRenderer::renderSDL(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int windowHeight) const {
+    if (!renderer) return;
+
+    // ۱. رسم پس‌زمینه بوم (رنگ خاکستری تیره مایل به آبی)
+    SDL_SetRenderDrawColor(renderer, 30, 35, 45, 255);
+    SDL_RenderClear(renderer);
+
+    // ۲. رسم خطوط شطرنجی (Grid Lines) در صورت فعال بودن
+    if (canvas_.grid().isVisible()) {
+        SDL_SetRenderDrawColor(renderer, 50, 58, 75, 255); // رنگ خطوط شطرنجی
+
+        float spacing = canvas_.grid().spacing();
+
+        // پیدا کردن گوشه‌های صفحه در فضای جهانی (World Space)
+        Point topLeftWorld = canvas_.screenToWorld({0.0f, 0.0f});
+        Point bottomRightWorld = canvas_.screenToWorld({static_cast<float>(windowWidth), static_cast<float>(windowHeight)});
+
+        // رند کردن موقعیت‌ها برای هم‌ترازی با شبکه‌بندی
+        float startX = std::floor(topLeftWorld.x / spacing) * spacing;
+        float endX = std::ceil(bottomRightWorld.x / spacing) * spacing;
+        float startY = std::floor(topLeftWorld.y / spacing) * spacing;
+        float endY = std::ceil(bottomRightWorld.y / spacing) * spacing;
+
+        // رسم خطوط عمودی
+        for (float x = startX; x <= endX; x += spacing) {
+            Point p1 = canvas_.worldToScreen({x, topLeftWorld.y});
+            Point p2 = canvas_.worldToScreen({x, bottomRightWorld.y});
+            SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
+        }
+
+        // رسم خطوط افقی
+        for (float y = startY; y <= endY; y += spacing) {
+            Point p1 = canvas_.worldToScreen({topLeftWorld.x, y});
+            Point p2 = canvas_.worldToScreen({bottomRightWorld.x, y});
+            SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
+        }
+    }
+
+    // ۳. رندر متون راهنما و مختصات لحظه‌ای (Real-time Coordinates)
+    if (font) {
+        SDL_Color infoColor{170, 180, 200, 255};
+
+        Point mouseWorld = canvas_.mouseWorldPosition();
+        std::string coordText = "X: " + std::to_string(static_cast<int>(mouseWorld.x)) +
+                                " , Y: " + std::to_string(static_cast<int>(mouseWorld.y));
+        std::string zoomText = "Zoom: " + std::to_string(static_cast<int>(canvas_.zoom() * 100)) + "%";
+        std::string hintText = "Hold Middle Mouse to Pan / Scroll to Zoom";
+
+        auto drawLocalText = [&](const std::string& text, float x, float y) {
+            SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), text.size(), infoColor);
+            if (surface) {
+                SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+                if (texture) {
+                    SDL_FRect dest{x, y, static_cast<float>(surface->w), static_cast<float>(surface->h)};
+                    SDL_RenderTexture(renderer, texture, nullptr, &dest);
+                    SDL_DestroyTexture(texture);
+                }
+                SDL_DestroySurface(surface);
+            }
+        };
+
+        drawLocalText(coordText, 20.0f, windowHeight - 40.0f);
+        drawLocalText(zoomText, windowWidth - 140.0f, windowHeight - 40.0f);
+        drawLocalText(hintText, 20.0f, 20.0f);
+    }
 }

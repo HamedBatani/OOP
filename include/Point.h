@@ -1,3 +1,4 @@
+//point.h
 #pragma once
 
 struct Point {

@@ -85,7 +85,7 @@
 #define HAVE_MEMMOVE 1
 #define HAVE_MEMCMP 1
 #define HAVE_WCSLEN 1
-/* #undef HAVE_WCSNLEN */
+#define HAVE_WCSNLEN 1
 /* #undef HAVE_WCSLCPY */
 /* #undef HAVE_WCSLCAT */
 #define HAVE_WCSSTR 1
@@ -96,7 +96,7 @@
 #define HAVE_WCSTOUL 1
 #define HAVE_WCSTOULL 1
 #define HAVE_STRLEN 1
-/* #undef HAVE_STRNLEN */
+#define HAVE_STRNLEN 1
 /* #undef HAVE_STRLCPY */
 /* #undef HAVE_STRLCAT */
 #define HAVE_STRPBRK 1
@@ -107,7 +107,7 @@
 #define HAVE_STRRCHR 1
 #define HAVE_STRSTR 1
 /* #undef HAVE_STRNSTR */
-/* #undef HAVE_STRTOK_R */
+#define HAVE_STRTOK_R 1
 #define HAVE_ITOA 1
 #define HAVE__LTOA 1
 #define HAVE__ULTOA 1
@@ -147,10 +147,10 @@
 #define HAVE_FLOORF 1
 #define HAVE_FMOD 1
 #define HAVE_FMODF 1
-#define HAVE_ISINF 1
+/* #undef HAVE_ISINF */
 /* #undef HAVE_ISINFF */
 #define HAVE_ISINF_FLOAT_MACRO 1
-#define HAVE_ISNAN 1
+/* #undef HAVE_ISNAN */
 /* #undef HAVE_ISNANF */
 #define HAVE_ISNAN_FLOAT_MACRO 1
 #define HAVE_LOG 1
@@ -175,9 +175,9 @@
 #define HAVE_TANF 1
 #define HAVE_TRUNC 1
 #define HAVE_TRUNCF 1
-/* #undef HAVE__FSEEKI64 */
+#define HAVE__FSEEKI64 1
 #define HAVE_FOPEN64 1
-/* #undef HAVE_FSEEKO */
+#define HAVE_FSEEKO 1
 #define HAVE_FSEEKO64 1
 /* #undef HAVE_MEMFD_CREATE */
 /* #undef HAVE_POSIX_FALLOCATE */
@@ -225,21 +225,21 @@
 /* #undef HAVE_LIBTHAI_H */
 /* #undef SDL_LIBTHAI_DYNAMIC */
 
-/* #undef HAVE_DDRAW_H */
-/* #undef HAVE_DSOUND_H */
-/* #undef HAVE_DINPUT_H */
-/* #undef HAVE_XINPUT_H */
+#define HAVE_DDRAW_H 1
+#define HAVE_DSOUND_H 1
+#define HAVE_DINPUT_H 1
+#define HAVE_XINPUT_H 1
 /* #undef HAVE_WINDOWS_GAMING_INPUT_H */
 /* #undef HAVE_GAMEINPUT_H */
 /* #undef SDL_GAMEINPUT_DYNAMIC */
-/* #undef HAVE_DXGI_H */
-/* #undef HAVE_DXGI1_5_H */
-/* #undef HAVE_DXGI1_6_H */
+#define HAVE_DXGI_H 1
+#define HAVE_DXGI1_5_H 1
+#define HAVE_DXGI1_6_H 1
 
-/* #undef HAVE_MMDEVICEAPI_H */
-/* #undef HAVE_TPCSHRD_H */
-/* #undef HAVE_ROAPI_H */
-/* #undef HAVE_SHELLSCALINGAPI_H */
+#define HAVE_MMDEVICEAPI_H 1
+#define HAVE_TPCSHRD_H 1
+#define HAVE_ROAPI_H 1
+#define HAVE_SHELLSCALINGAPI_H 1
 
 /* #undef USE_POSIX_SPAWN */
 /* #undef HAVE_POSIX_SPAWN_FILE_ACTIONS_ADDCHDIR */
@@ -274,7 +274,7 @@
 /* #undef SDL_AUDIO_DRIVER_AAUDIO */
 /* #undef SDL_AUDIO_DRIVER_COREAUDIO */
 #define SDL_AUDIO_DRIVER_DISK 1
-/* #undef SDL_AUDIO_DRIVER_DSOUND */
+#define SDL_AUDIO_DRIVER_DSOUND 1
 #define SDL_AUDIO_DRIVER_DUMMY 1
 /* #undef SDL_AUDIO_DRIVER_EMSCRIPTEN */
 /* #undef SDL_AUDIO_DRIVER_HAIKU */
@@ -288,7 +288,7 @@
 /* #undef SDL_AUDIO_DRIVER_PULSEAUDIO_DYNAMIC */
 /* #undef SDL_AUDIO_DRIVER_SNDIO */
 /* #undef SDL_AUDIO_DRIVER_SNDIO_DYNAMIC */
-/* #undef SDL_AUDIO_DRIVER_WASAPI */
+#define SDL_AUDIO_DRIVER_WASAPI 1
 /* #undef SDL_AUDIO_DRIVER_VITA */
 /* #undef SDL_AUDIO_DRIVER_PSP */
 /* #undef SDL_AUDIO_DRIVER_PS2 */
@@ -305,7 +305,7 @@
 /* #undef SDL_INPUT_WSCONS */
 /* #undef SDL_HAVE_MACHINE_JOYSTICK_H */
 /* #undef SDL_JOYSTICK_ANDROID */
-/* #undef SDL_JOYSTICK_DINPUT */
+#define SDL_JOYSTICK_DINPUT 1
 /* #undef SDL_JOYSTICK_DOS */
 /* #undef SDL_JOYSTICK_DUMMY */
 /* #undef SDL_JOYSTICK_EMSCRIPTEN */
@@ -323,14 +323,14 @@
 #define SDL_JOYSTICK_VIRTUAL 1
 /* #undef SDL_JOYSTICK_VITA */
 /* #undef SDL_JOYSTICK_WGI */
-/* #undef SDL_JOYSTICK_XINPUT */
+#define SDL_JOYSTICK_XINPUT 1
 
 /* #undef SDL_JOYSTICK_PRIVATE */
 
-#define SDL_HAPTIC_DUMMY 1
+/* #undef SDL_HAPTIC_DUMMY */
 /* #undef SDL_HAPTIC_LINUX */
 /* #undef SDL_HAPTIC_IOKIT */
-/* #undef SDL_HAPTIC_DINPUT */
+#define SDL_HAPTIC_DINPUT 1
 /* #undef SDL_HAPTIC_ANDROID */
 
 /* #undef SDL_HAPTIC_PRIVATE */
@@ -348,8 +348,8 @@
 /* Enable various sensor drivers */
 /* #undef SDL_SENSOR_ANDROID */
 /* #undef SDL_SENSOR_COREMOTION */
-/* #undef SDL_SENSOR_WINDOWS */
-#define SDL_SENSOR_DUMMY 1
+#define SDL_SENSOR_WINDOWS 1
+/* #undef SDL_SENSOR_DUMMY */
 /* #undef SDL_SENSOR_VITA */
 /* #undef SDL_SENSOR_N3DS */
 /* #undef SDL_SENSOR_EMSCRIPTEN */
@@ -459,8 +459,8 @@
 /* #undef SDL_VIDEO_DRIVER_PRIVATE */
 
 #define SDL_VIDEO_RENDER_D3D 1
-/* #undef SDL_VIDEO_RENDER_D3D11 */
-/* #undef SDL_VIDEO_RENDER_D3D12 */
+#define SDL_VIDEO_RENDER_D3D11 1
+#define SDL_VIDEO_RENDER_D3D12 1
 #define SDL_VIDEO_RENDER_GPU 1
 /* #undef SDL_VIDEO_RENDER_METAL */
 #define SDL_VIDEO_RENDER_VULKAN 1
@@ -493,7 +493,7 @@
 
 /* Enable GPU support */
 /* #undef SDL_GPU_D3D11 */
-/* #undef SDL_GPU_D3D12 */
+#define SDL_GPU_D3D12 1
 #define SDL_GPU_VULKAN 1
 /* #undef SDL_GPU_METAL */
 #define HAVE_GPU_OPENXR 1
@@ -551,7 +551,7 @@
 /* #undef SDL_CAMERA_DRIVER_COREMEDIA */
 /* #undef SDL_CAMERA_DRIVER_ANDROID */
 /* #undef SDL_CAMERA_DRIVER_EMSCRIPTEN */
-/* #undef SDL_CAMERA_DRIVER_MEDIAFOUNDATION */
+#define SDL_CAMERA_DRIVER_MEDIAFOUNDATION 1
 /* #undef SDL_CAMERA_DRIVER_PIPEWIRE */
 /* #undef SDL_CAMERA_DRIVER_PIPEWIRE_DYNAMIC */
 /* #undef SDL_CAMERA_DRIVER_VITA */
