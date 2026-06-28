@@ -1,13 +1,18 @@
-//MAINCPP
+// src/main.cpp
 #include "AppState.h"
 #include "StartMenu.h"
+#include "Canvas.h"
+#include "CanvasRenderer.h"
+#include "Toolbar.h"
+#include "ComponentLibrary.h"
+#include "ProjectManager.h"
+
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
 
-
-
 #include <iostream>
 #include <string>
+#include <memory>
 
 namespace {
     constexpr int WindowWidth = 800;
@@ -72,8 +77,7 @@ namespace {
         TTF_Font* font = TTF_OpenFont(path, 24);
         if (!font) {
             std::cerr << "Font loading failed: " << SDL_GetError() << '\n';
-            std::cin.get(); // ADD THIS LINE - keeps window open
-
+            std::cin.get();
             TTF_Quit();
             SDL_Quit();
         }
@@ -113,6 +117,8 @@ int main(int, char**) {
         return 1;
     }
 
+    SDL_StartTextInput(window);
+
     TTF_Font* font = loadFont();
     if (!font) {
         std::cerr << "Font loading failed: " << SDL_GetError() << '\n';
@@ -127,6 +133,17 @@ int main(int, char**) {
     AppState currentState = AppState::MainMenu;
     bool running = true;
 
+    Toolbar toolbar{ 0, 0, 800, 50 };
+    // پنل کتابخانه به اندازه کل فضای باقی‌مانده (۵۵۰ پیکسل) کشیده شد
+    ComponentLibrary compLib{ 0, 50, 180, 550 };
+
+    std::unique_ptr<Canvas> canvas = nullptr;
+    std::unique_ptr<CanvasRenderer> canvasRenderer = nullptr;
+
+    bool isPanning = false;
+    std::string activeAction = "";
+    std::string selectedComponent = "None";
+
     while (running && currentState != AppState::Exit) {
         SDL_Event event;
 
@@ -140,15 +157,75 @@ int main(int, char**) {
             if (currentState == AppState::MainMenu) {
                 startMenu.handleEvent(event);
             }
+            else if (currentState == AppState::NewProject) {
+                if (event.type == SDL_EVENT_KEY_DOWN) {
+                    if ((event.key.mod & SDL_KMOD_CTRL) && event.key.key == SDLK_S) {
+                        ProjectManager::saveProject("circuit.txt");
+                        std::cout << "Project Saved via Shortcut (Ctrl+S)!\n";
+                    }
+                }
+
+                toolbar.handleEvent(event, activeAction);
+                compLib.handleEvent(event, selectedComponent);
+
+                if (activeAction == "Save") {
+                    ProjectManager::saveProject("circuit.txt");
+                    activeAction = "";
+                } else if (activeAction == "Load") {
+                    ProjectManager::loadProject("circuit.txt");
+                    activeAction = "";
+                } else if (activeAction == "Grid Toggle" && canvas) {
+                    canvas->grid().setVisible(!canvas->grid().isVisible());
+                    activeAction = "";
+                }
+
+                if (canvas) {
+                    if (event.type == SDL_EVENT_MOUSE_MOTION) {
+                        float canvasMouseX = event.motion.x - 180.0f;
+                        float canvasMouseY = event.motion.y - 50.0f;
+                        canvas->setMouseScreenPosition({canvasMouseX, canvasMouseY});
+
+                        if (isPanning) {
+                            canvas->pan({event.motion.xrel, event.motion.yrel});
+                        }
+                    }
+                    else if (event.type == SDL_EVENT_MOUSE_WHEEL) {
+                        if (event.wheel.y > 0) {
+                            canvas->zoomBy(1.1f);
+                        } else if (event.wheel.y < 0) {
+                            canvas->zoomBy(0.9f);
+                        }
+                    }
+                    else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+                        if (event.button.button == SDL_BUTTON_MIDDLE) {
+                            isPanning = true;
+                        }
+                    }
+                    else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
+                        if (event.button.button == SDL_BUTTON_MIDDLE) {
+                            isPanning = false;
+                        }
+                    }
+                }
+            }
         }
 
         if (currentState == AppState::MainMenu) {
             const AppState requestedState = startMenu.getRequestedState();
             if (requestedState != AppState::MainMenu) {
                 currentState = requestedState;
+
+                if (currentState == AppState::NewProject) {
+                    const PageSize& size = startMenu.getSelectedPageSize();
+                    canvas = std::make_unique<Canvas>(static_cast<float>(size.width), static_cast<float>(size.height));
+                    canvasRenderer = std::make_unique<CanvasRenderer>(*canvas);
+                }
                 startMenu.resetRequestedState();
             }
         }
+
+        int currentW, currentH;
+        SDL_GetWindowSize(window, &currentW, &currentH);
 
         switch (currentState) {
             case AppState::MainMenu:
@@ -156,31 +233,29 @@ int main(int, char**) {
                 break;
 
             case AppState::NewProject:
-                renderPlaceholderScreen(renderer,
-                                        font,
-                                        "New Project",
-                                        "Blank circuit canvas placeholder");
+                if (canvasRenderer) {
+                    SDL_Rect canvasViewport{ 180, 50, 620, 550 };
+                    SDL_SetRenderViewport(renderer, &canvasViewport);
+
+                    canvasRenderer->renderSDL(renderer, font, 620, 550);
+
+                    SDL_SetRenderViewport(renderer, nullptr);
+
+                    toolbar.render(renderer, font);
+                    compLib.render(renderer, font, selectedComponent);
+                }
                 break;
 
             case AppState::OpenProject:
-                renderPlaceholderScreen(renderer,
-                                        font,
-                                        "Open Project",
-                                        "Project loading placeholder");
+                renderPlaceholderScreen(renderer, font, "Open Project", "Project loading placeholder");
                 break;
 
             case AppState::SelectPageSize:
-                renderPlaceholderScreen(renderer,
-                                        font,
-                                        "Select Page Size",
-                                        "Page size selection is handled in the menu");
+                renderPlaceholderScreen(renderer, font, "Select Page Size", "Page size selection is handled in the menu");
                 break;
 
             case AppState::RecentProjects:
-                renderPlaceholderScreen(renderer,
-                                        font,
-                                        "Recent Projects",
-                                        "Recent projects are shown in the menu");
+                renderPlaceholderScreen(renderer, font, "Recent Projects", "Recent projects are shown in the menu");
                 break;
 
             case AppState::Exit:
@@ -190,6 +265,8 @@ int main(int, char**) {
 
         SDL_RenderPresent(renderer);
     }
+
+    SDL_StopTextInput(window);
 
     TTF_CloseFont(font);
     SDL_DestroyRenderer(renderer);

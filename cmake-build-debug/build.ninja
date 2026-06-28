@@ -70,6 +70,41 @@ build CMakeFiles/OOP.dir/src/StartMenu.cpp.obj: CXX_COMPILER__OOP_Debug C$:/User
   OBJECT_DIR = CMakeFiles\OOP.dir
   OBJECT_FILE_DIR = CMakeFiles\OOP.dir\src
 
+build CMakeFiles/OOP.dir/src/Canvas.cpp.obj: CXX_COMPILER__OOP_Debug C$:/Users/bilgi/CLionProjects/OOP/src/Canvas.cpp || cmake_object_order_depends_target_OOP
+  DEP_FILE = CMakeFiles\OOP.dir\src\Canvas.cpp.obj.d
+  FLAGS = -g -std=c++17
+  INCLUDES = -IC:/Users/bilgi/CLionProjects/OOP/include -IC:/Users/bilgi/CLionProjects/OOP/lib/SDL3_ttf/include -isystem C:/Users/bilgi/OneDrive/Desktop/SDL3-devel-3.4.10-mingw/SDL3-3.4.10/x86_64-w64-mingw32/include
+  OBJECT_DIR = CMakeFiles\OOP.dir
+  OBJECT_FILE_DIR = CMakeFiles\OOP.dir\src
+
+build CMakeFiles/OOP.dir/src/CanvasRenderer.cpp.obj: CXX_COMPILER__OOP_Debug C$:/Users/bilgi/CLionProjects/OOP/src/CanvasRenderer.cpp || cmake_object_order_depends_target_OOP
+  DEP_FILE = CMakeFiles\OOP.dir\src\CanvasRenderer.cpp.obj.d
+  FLAGS = -g -std=c++17
+  INCLUDES = -IC:/Users/bilgi/CLionProjects/OOP/include -IC:/Users/bilgi/CLionProjects/OOP/lib/SDL3_ttf/include -isystem C:/Users/bilgi/OneDrive/Desktop/SDL3-devel-3.4.10-mingw/SDL3-3.4.10/x86_64-w64-mingw32/include
+  OBJECT_DIR = CMakeFiles\OOP.dir
+  OBJECT_FILE_DIR = CMakeFiles\OOP.dir\src
+
+build CMakeFiles/OOP.dir/src/Toolbar.cpp.obj: CXX_COMPILER__OOP_Debug C$:/Users/bilgi/CLionProjects/OOP/src/Toolbar.cpp || cmake_object_order_depends_target_OOP
+  DEP_FILE = CMakeFiles\OOP.dir\src\Toolbar.cpp.obj.d
+  FLAGS = -g -std=c++17
+  INCLUDES = -IC:/Users/bilgi/CLionProjects/OOP/include -IC:/Users/bilgi/CLionProjects/OOP/lib/SDL3_ttf/include -isystem C:/Users/bilgi/OneDrive/Desktop/SDL3-devel-3.4.10-mingw/SDL3-3.4.10/x86_64-w64-mingw32/include
+  OBJECT_DIR = CMakeFiles\OOP.dir
+  OBJECT_FILE_DIR = CMakeFiles\OOP.dir\src
+
+build CMakeFiles/OOP.dir/src/ComponentLibrary.cpp.obj: CXX_COMPILER__OOP_Debug C$:/Users/bilgi/CLionProjects/OOP/src/ComponentLibrary.cpp || cmake_object_order_depends_target_OOP
+  DEP_FILE = CMakeFiles\OOP.dir\src\ComponentLibrary.cpp.obj.d
+  FLAGS = -g -std=c++17
+  INCLUDES = -IC:/Users/bilgi/CLionProjects/OOP/include -IC:/Users/bilgi/CLionProjects/OOP/lib/SDL3_ttf/include -isystem C:/Users/bilgi/OneDrive/Desktop/SDL3-devel-3.4.10-mingw/SDL3-3.4.10/x86_64-w64-mingw32/include
+  OBJECT_DIR = CMakeFiles\OOP.dir
+  OBJECT_FILE_DIR = CMakeFiles\OOP.dir\src
+
+build CMakeFiles/OOP.dir/src/StatusBar.cpp.obj: CXX_COMPILER__OOP_Debug C$:/Users/bilgi/CLionProjects/OOP/src/StatusBar.cpp || cmake_object_order_depends_target_OOP
+  DEP_FILE = CMakeFiles\OOP.dir\src\StatusBar.cpp.obj.d
+  FLAGS = -g -std=c++17
+  INCLUDES = -IC:/Users/bilgi/CLionProjects/OOP/include -IC:/Users/bilgi/CLionProjects/OOP/lib/SDL3_ttf/include -isystem C:/Users/bilgi/OneDrive/Desktop/SDL3-devel-3.4.10-mingw/SDL3-3.4.10/x86_64-w64-mingw32/include
+  OBJECT_DIR = CMakeFiles\OOP.dir
+  OBJECT_FILE_DIR = CMakeFiles\OOP.dir\src
+
 
 # =============================================================================
 # Link build statements for EXECUTABLE target OOP
@@ -78,7 +113,7 @@ build CMakeFiles/OOP.dir/src/StartMenu.cpp.obj: CXX_COMPILER__OOP_Debug C$:/User
 #############################################
 # Link the executable OOP.exe
 
-build OOP.exe: CXX_EXECUTABLE_LINKER__OOP_Debug CMakeFiles/OOP.dir/src/main.cpp.obj CMakeFiles/OOP.dir/src/Button.cpp.obj CMakeFiles/OOP.dir/src/StartMenu.cpp.obj | C$:/Users/bilgi/OneDrive/Desktop/SDL3-devel-3.4.10-mingw/SDL3-3.4.10/x86_64-w64-mingw32/lib/libSDL3.dll.a
+build OOP.exe: CXX_EXECUTABLE_LINKER__OOP_Debug CMakeFiles/OOP.dir/src/main.cpp.obj CMakeFiles/OOP.dir/src/Button.cpp.obj CMakeFiles/OOP.dir/src/StartMenu.cpp.obj CMakeFiles/OOP.dir/src/Canvas.cpp.obj CMakeFiles/OOP.dir/src/CanvasRenderer.cpp.obj CMakeFiles/OOP.dir/src/Toolbar.cpp.obj CMakeFiles/OOP.dir/src/ComponentLibrary.cpp.obj CMakeFiles/OOP.dir/src/StatusBar.cpp.obj | C$:/Users/bilgi/OneDrive/Desktop/SDL3-devel-3.4.10-mingw/SDL3-3.4.10/x86_64-w64-mingw32/lib/libSDL3.dll.a
   FLAGS = -g
   LINK_LIBRARIES = C:/Users/bilgi/OneDrive/Desktop/SDL3-devel-3.4.10-mingw/SDL3-3.4.10/x86_64-w64-mingw32/lib/libSDL3.dll.a  -lSDL3_ttf  -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32
   LINK_PATH = -LC:/Users/bilgi/CLionProjects/OOP/lib/SDL3_ttf/lib
