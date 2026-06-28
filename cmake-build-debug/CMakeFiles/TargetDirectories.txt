@@ -1,3 +1,0 @@
-C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/CMakeFiles/OOP.dir
-C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/CMakeFiles/edit_cache.dir
-C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/CMakeFiles/rebuild_cache.dir
