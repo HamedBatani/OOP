@@ -1,0 +1,21 @@
+# ninja log v5
+1	171	8042033913962771	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-mkdir	79f4b09c230c24c1
+1	171	8042033913962771	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-mkdir	79f4b09c230c24c1
+172	330783	8042037219938293	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-download	e9963c3e26e81f1a
+172	330783	8042037219938293	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-download	e9963c3e26e81f1a
+330783	335143	0	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-update	535a7bbbf27679a5
+330783	335143	0	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-update	535a7bbbf27679a5
+335144	335321	8042037265448359	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-patch	fe45639ec780d398
+335144	335321	8042037265448359	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-patch	fe45639ec780d398
+335322	335483	8042037267054620	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-configure	a2b2b0fb3798bbb
+335322	335483	8042037267054620	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-configure	a2b2b0fb3798bbb
+335484	335653	8042037268763003	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-build	463b48aa5518104b
+335484	335653	8042037268763003	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-build	463b48aa5518104b
+335653	335813	8042037270358135	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-install	fc4f4ea4881fe371
+335653	335813	8042037270358135	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-install	fc4f4ea4881fe371
+335813	335981	8042037272038378	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-test	da1a4c56cd574124
+335813	335981	8042037272038378	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-test	da1a4c56cd574124
+335981	336223	8042037274429433	CMakeFiles/sdl3-populate-complete	daf2ec346beb5ff
+335981	336223	8042037274429433	sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-done	daf2ec346beb5ff
+335981	336223	8042037274429433	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/CMakeFiles/sdl3-populate-complete	daf2ec346beb5ff
+335981	336223	8042037274429433	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/sdl3-populate-prefix/src/sdl3-populate-stamp/sdl3-populate-done	daf2ec346beb5ff

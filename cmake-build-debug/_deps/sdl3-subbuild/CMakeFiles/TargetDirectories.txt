@@ -1,0 +1,3 @@
+C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/CMakeFiles/sdl3-populate.dir
+C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/CMakeFiles/edit_cache.dir
+C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3-subbuild/CMakeFiles/rebuild_cache.dir

@@ -1,0 +1,21 @@
+# ninja log v5
+3	380	8042023591650309	sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-mkdir	abd2469878df4012
+3	380	8042023591650309	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-mkdir	abd2469878df4012
+2	847491	8042047659157502	sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-download	61632038426847e5
+2	847491	8042047659157502	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-download	61632038426847e5
+847492	850810	0	sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-update	5726b102ec65e820
+847492	850810	0	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-update	5726b102ec65e820
+850810	850883	8042047693098029	sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-patch	c0840ad362014e1c
+850810	850883	8042047693098029	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-patch	c0840ad362014e1c
+850883	850958	8042047693842526	sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-configure	d3c2aef44e6ce4c1
+850883	850958	8042047693842526	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-configure	d3c2aef44e6ce4c1
+850958	851034	8042047694587398	sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-build	1264aa0f6a6988d1
+850958	851034	8042047694587398	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-build	1264aa0f6a6988d1
+851034	851108	8042047695347949	sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-install	22a2ce2517f9f87b
+851034	851108	8042047695347949	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-install	22a2ce2517f9f87b
+851109	851182	8042047696074818	sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-test	b573b129f655b131
+851109	851182	8042047696074818	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-test	b573b129f655b131
+851182	851289	8042047697151793	CMakeFiles/sdl3_ttf-populate-complete	da5bde51252dff1b
+851182	851289	8042047697151793	sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-done	da5bde51252dff1b
+851182	851289	8042047697151793	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/CMakeFiles/sdl3_ttf-populate-complete	da5bde51252dff1b
+851182	851289	8042047697151793	C:/Users/bilgi/CLionProjects/OOP/cmake-build-debug/_deps/sdl3_ttf-subbuild/sdl3_ttf-populate-prefix/src/sdl3_ttf-populate-stamp/sdl3_ttf-populate-done	da5bde51252dff1b
