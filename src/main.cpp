@@ -106,6 +106,15 @@ int main(int, char**) {
     bool isDraggingComponents = false;
     Point dragStartWorldMouse{0.0f, 0.0f};
 
+    // ==========================================
+    // متغیرهای بخش ۴.۷: مدیریت پنجره ویژگی‌ها (Properties)
+    // ==========================================
+    bool isPropertiesDialogOpen = false;
+    int editingComponentIndex = -1;
+    std::string editLabelBuf = "";
+    std::string editValueBuf = "";
+    int activeEditField = 0; // 0 = فیلد شناسه (Label), 1 = فیلد مقدار فنی (Value)
+
     while (running && currentState != AppState::Exit) {
         SDL_Event event;
 
@@ -121,6 +130,34 @@ int main(int, char**) {
             }
             else if (currentState == AppState::NewProject) {
 
+                // --- مدیریت انحصاری رویدادهای پنجره پاپ‌آپ ویژگی‌ها (۴.۷) ---
+                if (isPropertiesDialogOpen) {
+                    if (event.type == SDL_EVENT_TEXT_INPUT) {
+                        if (activeEditField == 0 && editLabelBuf.size() < 10) {
+                            editLabelBuf += event.text.text;
+                        } else if (activeEditField == 1 && editValueBuf.size() < 12) {
+                            editValueBuf += event.text.text;
+                        }
+                    } else if (event.type == SDL_EVENT_KEY_DOWN) {
+                        if (event.key.key == SDLK_BACKSPACE) {
+                            if (activeEditField == 0 && !editLabelBuf.empty()) editLabelBuf.pop_back();
+                            else if (activeEditField == 1 && !editValueBuf.empty()) editValueBuf.pop_back();
+                        } else if (event.key.key == SDLK_TAB) {
+                            activeEditField = (activeEditField + 1) % 2; // جابجایی بین دو باکس ورودی
+                        } else if (event.key.key == SDLK_RETURN || event.key.key == SDLK_KP_ENTER) {
+                            if (!editLabelBuf.empty() && editingComponentIndex >= 0) {
+                                placedComponents[editingComponentIndex].labelId = editLabelBuf;
+                                placedComponents[editingComponentIndex].valueStr = editValueBuf;
+                            }
+                            isPropertiesDialogOpen = false;
+                        } else if (event.key.key == SDLK_ESCAPE) {
+                            isPropertiesDialogOpen = false;
+                        }
+                    }
+                    continue; // مسدود کردن ارسال ورودی به پنل‌های پشت مدال
+                }
+
+                // --- مدیریت رویدادهای پنجره پاپ‌آپ Save ---
                 if (isSaveDialogOpen) {
                     if (event.type == SDL_EVENT_TEXT_INPUT) {
                         if (saveFileName.size() < 25) {
@@ -144,15 +181,47 @@ int main(int, char**) {
                     continue;
                 }
 
-                // هندل کردن دکمه ESC برای رها کردن ابزار جاری و دیسلکت کردن
                 if (event.type == SDL_EVENT_KEY_DOWN) {
                     if (event.key.key == SDLK_ESCAPE) {
-                        selectedComponent = "None"; // بازگشت به حالت انتخاب
+                        selectedComponent = "None";
                         for (auto& comp : placedComponents) comp.isSelected = false;
                     }
-                    if ((event.key.mod & SDL_KMOD_CTRL) && event.key.key == SDLK_S) {
+                    else if ((event.key.mod & SDL_KMOD_CTRL) && event.key.key == SDLK_S) {
                         isSaveDialogOpen = true;
                         saveFileName = "";
+                    }
+                    else if (selectedComponent == "None" || selectedComponent.empty()) {
+                        if (event.key.key == SDLK_R) {
+                            for (auto& comp : placedComponents) {
+                                if (comp.isSelected) {
+                                    comp.rotationDegrees = (comp.rotationDegrees + 90) % 360;
+                                    comp.updatePinPositions();
+                                }
+                            }
+                        }
+                        else if (event.key.key == SDLK_M) {
+                            for (auto& comp : placedComponents) {
+                                if (comp.isSelected) {
+                                    comp.isMirroredH = !comp.isMirroredH;
+                                    comp.updatePinPositions();
+                                }
+                            }
+                        }
+                        else if (event.key.key == SDLK_V) {
+                            for (auto& comp : placedComponents) {
+                                if (comp.isSelected) {
+                                    comp.isMirroredV = !comp.isMirroredV;
+                                    comp.updatePinPositions();
+                                }
+                            }
+                        }
+                        else if (event.key.key == SDLK_DELETE || event.key.key == SDLK_BACKSPACE) {
+                            placedComponents.erase(
+                                    std::remove_if(placedComponents.begin(), placedComponents.end(),
+                                                   [](const ComponentInstance& comp) { return comp.isSelected; }),
+                                    placedComponents.end()
+                            );
+                        }
                     }
                 }
 
@@ -198,6 +267,7 @@ int main(int, char**) {
                                 if (comp.isSelected) {
                                     Point targetPos = comp.dragStartPos + mouseDelta;
                                     comp.worldPos = canvas->snapToGrid(targetPos);
+                                    comp.updatePinPositions();
                                 }
                             }
                         }
@@ -222,7 +292,6 @@ int main(int, char**) {
                             isPanning = true;
                         }
                         else if (event.button.button == SDL_BUTTON_RIGHT) {
-                            // کلیک راست ابزار انتخابی جاری را لغو می‌کند و به حالت مود دیسلکت برمی‌گرداند
                             selectedComponent = "None";
                         }
                         else if (event.button.button == SDL_BUTTON_LEFT) {
@@ -255,18 +324,32 @@ int main(int, char**) {
                                     }
 
                                     if (hitDetected) {
-                                        if (!placedComponents[hitIndex].isSelected) {
-                                            if (!(event.key.mod & SDL_KMOD_SHIFT)) {
-                                                for (auto& comp : placedComponents) comp.isSelected = false;
-                                            }
-                                            placedComponents[hitIndex].isSelected = true;
+                                        // ==========================================
+                                        // بخش ۴.۷: تشخیص دابل‌کلیک جهت باز کردن ویژگی‌ها
+                                        // ==========================================
+                                        if (event.button.clicks == 2) {
+                                            isPropertiesDialogOpen = true;
+                                            editingComponentIndex = hitIndex;
+                                            editLabelBuf = placedComponents[hitIndex].labelId;
+                                            editValueBuf = placedComponents[hitIndex].valueStr;
+                                            activeEditField = 0;
+                                            isDraggingComponents = false; // لغو پروسه جابجایی
                                         }
+                                        else {
+                                            // کلیک تک معمولی جهت انتخاب یا جابجایی
+                                            if (!placedComponents[hitIndex].isSelected) {
+                                                if (!(event.key.mod & SDL_KMOD_SHIFT)) {
+                                                    for (auto& comp : placedComponents) comp.isSelected = false;
+                                                }
+                                                placedComponents[hitIndex].isSelected = true;
+                                            }
 
-                                        isDraggingComponents = true;
-                                        dragStartWorldMouse = worldMouse;
-                                        for (auto& comp : placedComponents) {
-                                            if (comp.isSelected) {
-                                                comp.dragStartPos = comp.worldPos;
+                                            isDraggingComponents = true;
+                                            dragStartWorldMouse = worldMouse;
+                                            for (auto& comp : placedComponents) {
+                                                if (comp.isSelected) {
+                                                    comp.dragStartPos = comp.worldPos;
+                                                }
                                             }
                                         }
                                     }
@@ -373,6 +456,63 @@ int main(int, char**) {
                         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
                     }
 
+                    // ==========================================
+                    // رندر گرافیکی پنجره ویژگی‌ها مدال (۴.۷)
+                    // ==========================================
+                    if (isPropertiesDialogOpen && editingComponentIndex >= 0 && editingComponentIndex < static_cast<int>(placedComponents.size())) {
+                        const auto& comp = placedComponents[editingComponentIndex];
+
+                        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+                        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 180);
+                        SDL_FRect screenRect{0, 0, static_cast<float>(currentW), static_cast<float>(currentH)};
+                        SDL_RenderFillRect(renderer, &screenRect);
+                        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+
+                        // کادر شکیل مدال تنظیمات ویژگی‌ها
+                        SDL_FRect dialogRect{ currentW / 2.0f - 180.0f, currentH / 2.0f - 120.0f, 360.0f, 240.0f };
+                        SDL_SetRenderDrawColor(renderer, 45, 55, 75, 255);
+                        SDL_RenderFillRect(renderer, &dialogRect);
+                        SDL_SetRenderDrawColor(renderer, 100, 110, 130, 255);
+                        SDL_RenderRect(renderer, &dialogRect);
+
+                        // سربرگ عنوان پنجره
+                        std::string titleStr = comp.type + " Properties";
+                        renderText(renderer, font, titleStr, currentW / 2.0f, dialogRect.y + 15.0f, {255, 255, 255, 255});
+
+                        // باکس ورودی فیلد اول: شناسه مدار (Label Designator)
+                        renderText(renderer, font, "Designator Part Label:", dialogRect.x + 20.0f, dialogRect.y + 55.0f, {200, 210, 230, 255}, false);
+                        SDL_FRect labelBoxRect{ dialogRect.x + 20.0f, dialogRect.y + 82.0f, dialogRect.w - 40.0f, 32.0f };
+                        SDL_SetRenderDrawColor(renderer, 24, 28, 36, 255);
+                        SDL_RenderFillRect(renderer, &labelBoxRect);
+                        SDL_SetRenderDrawColor(renderer, activeEditField == 0 ? 66 : 80, activeEditField == 0 ? 153 : 90, activeEditField == 0 ? 225 : 110, 255);
+                        SDL_RenderRect(renderer, &labelBoxRect);
+                        std::string dispLabel = editLabelBuf;
+                        if (activeEditField == 0 && (SDL_GetTicks() / 500) % 2 == 0) dispLabel += "_";
+                        renderText(renderer, font, dispLabel, labelBoxRect.x + 8.0f, labelBoxRect.y + 4.0f, {255, 255, 255, 255}, false);
+
+                        // تغییر پویای برچسب فیلد دوم متناسب با ماهیت الکترونیکی المان جاری (بند ۷.۴ سند طراحی)
+                        std::string valPrompt = "Technical Value Specification:";
+                        if (comp.type == "Resistor") valPrompt = "Resistance Value (Ohm):";
+                        else if (comp.type == "Capacitor") valPrompt = "Capacitance (Farad):";
+                        else if (comp.type == "DC Source" || comp.type == "AC Source") valPrompt = "Source Voltage (Volt):";
+                        else if (comp.type == "Inductor") valPrompt = "Inductance Value (Henry):";
+
+                        // باکس ورودی فیلد دوم: مقدار مهندسی (Technical Value)
+                        renderText(renderer, font, valPrompt, dialogRect.x + 20.0f, dialogRect.y + 125.0f, {200, 210, 230, 255}, false);
+                        SDL_FRect valBoxRect{ dialogRect.x + 20.0f, dialogRect.y + 152.0f, dialogRect.w - 40.0f, 32.0f };
+                        SDL_SetRenderDrawColor(renderer, 24, 28, 36, 255);
+                        SDL_RenderFillRect(renderer, &valBoxRect);
+                        SDL_SetRenderDrawColor(renderer, activeEditField == 1 ? 66 : 80, activeEditField == 1 ? 153 : 90, activeEditField == 1 ? 225 : 110, 255);
+                        SDL_RenderRect(renderer, &valBoxRect);
+                        std::string dispVal = editValueBuf;
+                        if (activeEditField == 1 && (SDL_GetTicks() / 500) % 2 == 0) dispVal += "_";
+                        renderText(renderer, font, dispVal, valBoxRect.x + 8.0f, valBoxRect.y + 4.0f, {255, 255, 255, 255}, false);
+
+                        // راهنمای ناوبری پنجره
+                        renderText(renderer, font, "TAB: Switch | ENTER: Confirm | ESC: Cancel", currentW / 2.0f, dialogRect.y + 205.0f, {150, 160, 180, 255});
+                    }
+
+                    // --- رسم کردن پنجره پاپ‌آپ Save رو صفحه ---
                     if (isSaveDialogOpen) {
                         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
                         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 180);

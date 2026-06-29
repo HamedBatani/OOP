@@ -135,7 +135,7 @@ void CanvasRenderer::renderSDL(SDL_Renderer* renderer, TTF_Font* font, int windo
         std::string coordText = "X: " + std::to_string(static_cast<int>(mouseWorld.x)) +
                                 " , Y: " + std::to_string(static_cast<int>(mouseWorld.y));
         std::string zoomText = "Zoom: " + std::to_string(static_cast<int>(canvas_.zoom() * 100)) + "%";
-        std::string hintText = "Middle Mouse: Pan | Scroll: Zoom | Right-Click/ESC: Cancel Placement";
+        std::string hintText = "Middle Mouse: Pan | Scroll: Zoom | Double-Click component: Open Properties Panel";
 
         auto drawLocalText = [&](const std::string& text, float x, float y) {
             SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), text.size(), infoColor);
@@ -169,7 +169,6 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
         Point center = canvas_.worldToScreen(comp.worldPos);
         float zoom = canvas_.zoom();
 
-        // رسم حاشیه انتخاب کاربر
         if (comp.isSelected) {
             SDL_SetRenderDrawColor(renderer, 0, 136, 238, 45);
             SDL_RenderFillRect(renderer, &screenBox);
@@ -187,184 +186,214 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
             for(int i = 0; i < 4; ++i) SDL_RenderFillRect(renderer, &anchors[i]);
         }
 
-        // رنگ قرمز اصیل مدار الکتریکی
-        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
+        auto transformLocal = [&](float lx, float ly) -> Point {
+            if (comp.isMirroredH) lx = -lx;
+            if (comp.isMirroredV) ly = -ly;
 
-        auto drawCanvasCircle = [&](float x, float y, float r) {
+            float rx = lx;
+            float ry = ly;
+            if (comp.rotationDegrees == 90) {
+                rx = -ly; ry = lx;
+            } else if (comp.rotationDegrees == 180) {
+                rx = -lx; ry = -ly;
+            } else if (comp.rotationDegrees == 270) {
+                rx = ly; ry = -lx;
+            }
+            return canvas_.worldToScreen({comp.worldPos.x + rx, comp.worldPos.y + ry});
+        };
+
+        auto drawTransformedLine = [&](float x1, float y1, float x2, float y2) {
+            Point p1 = transformLocal(x1, y1);
+            Point p2 = transformLocal(x2, y2);
+            SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
+        };
+
+        auto drawTransformedCircle = [&](float cx, float cy, float r) {
             const int segments = 24;
             float step = (2.0f * PI) / segments;
             for (int i = 0; i < segments; ++i) {
-                SDL_RenderLine(renderer,
-                               x + r * std::cos(i * step), y + r * std::sin(i * step),
-                               x + r * std::cos((i + 1) * step), y + r * std::sin((i + 1) * step));
+                Point p1 = transformLocal(cx + r * std::cos(i * step), cy + r * std::sin(i * step));
+                Point p2 = transformLocal(cx + r * std::cos((i + 1) * step), cy + r * std::sin((i + 1) * step));
+                SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
             }
         };
 
-        // ==========================================
-        // شاخه قطعات ANALOG
-        // ==========================================
+        SDL_SetRenderDrawColor(renderer, 45, 55, 72, 255);
+        for (const auto& pin : comp.pins) {
+            Point pinScreen = canvas_.worldToScreen(pin.calculatedWorldPos);
+            SDL_FRect pinRect{pinScreen.x - 2.0f, pinScreen.y - 2.0f, 4.0f, 4.0f};
+            SDL_RenderFillRect(renderer, &pinRect);
+        }
+
+        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
+
         if (comp.type == "Resistor") {
-            SDL_RenderLine(renderer, center.x - 32 * zoom, center.y, center.x - 16 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x + 16 * zoom, center.y, center.x + 32 * zoom, center.y);
-            SDL_FRect body{center.x - 16 * zoom, center.y - 8 * zoom, 32 * zoom, 16 * zoom};
-            SDL_RenderRect(renderer, &body);
+            drawTransformedLine(-32, 0, -16, 0);
+            drawTransformedLine(16, 0, 32, 0);
+            drawTransformedLine(-16, -8, 16, -8);
+            drawTransformedLine(16, -8, 16, 8);
+            drawTransformedLine(16, 8, -16, 8);
+            drawTransformedLine(-16, 8, -16, -8);
         }
         else if (comp.type == "Capacitor") {
-            SDL_RenderLine(renderer, center.x - 32 * zoom, center.y, center.x - 6 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x + 6 * zoom, center.y, center.x + 32 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x - 6 * zoom, center.y - 12 * zoom, center.x - 6 * zoom, center.y + 12 * zoom);
-            SDL_RenderLine(renderer, center.x + 6 * zoom, center.y - 12 * zoom, center.x + 6 * zoom, center.y + 12 * zoom);
+            drawTransformedLine(-32, 0, -6, 0);
+            drawTransformedLine(6, 0, 32, 0);
+            drawTransformedLine(-6, -12, -6, 12);
+            drawTransformedLine(6, -12, 6, 12);
         }
         else if (comp.type == "Inductor") {
-            SDL_RenderLine(renderer, center.x - 32 * zoom, center.y, center.x - 20 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x + 20 * zoom, center.y, center.x + 32 * zoom, center.y);
+            drawTransformedLine(-32, 0, -20, 0);
+            drawTransformedLine(20, 0, 32, 0);
             for(int i = 0; i < 4; ++i) {
-                float bx = center.x - (15 - i * 10) * zoom;
+                float bx = -15.0f + (i * 10.0f);
+                float step = PI / 8.0f;
                 for(int j = 0; j < 8; ++j) {
-                    float step = PI / 8.0f;
-                    SDL_RenderLine(renderer,
-                                   bx + 5 * zoom * std::cos(PI + j * step), center.y + 5 * zoom * std::sin(PI + j * step),
-                                   bx + 5 * zoom * std::cos(PI + (j+1) * step), center.y + 5 * zoom * std::sin(PI + (j+1) * step));
+                    Point p1 = transformLocal(bx + 5.0f * std::cos(PI + j * step), 5.0f * std::sin(PI + j * step));
+                    Point p2 = transformLocal(bx + 5.0f * std::cos(PI + (j+1) * step), 5.0f * std::sin(PI + (j+1) * step));
+                    SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
                 }
             }
         }
         else if (comp.type == "Diode") {
-            SDL_RenderLine(renderer, center.x - 32 * zoom, center.y, center.x - 12 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x + 12 * zoom, center.y, center.x + 32 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x - 12 * zoom, center.y - 12 * zoom, center.x - 12 * zoom, center.y + 12 * zoom);
-            SDL_RenderLine(renderer, center.x - 12 * zoom, center.y - 12 * zoom, center.x + 12 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x - 12 * zoom, center.y + 12 * zoom, center.x + 12 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x + 12 * zoom, center.y - 12 * zoom, center.x + 12 * zoom, center.y + 12 * zoom);
+            drawTransformedLine(-32, 0, -12, 0);
+            drawTransformedLine(12, 0, 32, 0);
+            drawTransformedLine(-12, -12, -12, 12);
+            drawTransformedLine(-12, -12, 12, 0);
+            drawTransformedLine(-12, 12, 12, 0);
+            drawTransformedLine(12, -12, 12, 12);
         }
         else if (comp.type == "Op-Amp") {
-            SDL_RenderLine(renderer, center.x - 15 * zoom, center.y - 20 * zoom, center.x - 15 * zoom, center.y + 20 * zoom);
-            SDL_RenderLine(renderer, center.x - 15 * zoom, center.y - 20 * zoom, center.x + 20 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x - 15 * zoom, center.y + 20 * zoom, center.x + 20 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x - 35 * zoom, center.y - 8 * zoom, center.x - 15 * zoom, center.y - 8 * zoom);
-            SDL_RenderLine(renderer, center.x - 35 * zoom, center.y + 8 * zoom, center.x - 15 * zoom, center.y + 8 * zoom);
-            SDL_RenderLine(renderer, center.x + 20 * zoom, center.y, center.x + 35 * zoom, center.y);
+            drawTransformedLine(-15, -20, -15, 20);
+            drawTransformedLine(-15, -20, 20, 0);
+            drawTransformedLine(-15, 20, 20, 0);
+            drawTransformedLine(-35, -8, -15, -8);
+            drawTransformedLine(-35, 8, -15, 8);
+            drawTransformedLine(20, 0, 35, 0);
         }
-            // ==========================================
-            // شاخه قطعات DIGITAL
-            // ==========================================
         else if (comp.type == "AND Gate") {
-            SDL_RenderLine(renderer, center.x - 35 * zoom, center.y - 8 * zoom, center.x - 15 * zoom, center.y - 8 * zoom);
-            SDL_RenderLine(renderer, center.x - 35 * zoom, center.y + 8 * zoom, center.x - 15 * zoom, center.y + 8 * zoom);
-            SDL_RenderLine(renderer, center.x + 15 * zoom, center.y, center.x + 35 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x - 15 * zoom, center.y - 16 * zoom, center.x - 15 * zoom, center.y + 16 * zoom);
-            SDL_RenderLine(renderer, center.x - 15 * zoom, center.y - 16 * zoom, center.x, center.y - 16 * zoom);
-            SDL_RenderLine(renderer, center.x - 15 * zoom, center.y + 16 * zoom, center.x, center.y + 16 * zoom);
+            drawTransformedLine(-35, -8, -15, -8);
+            drawTransformedLine(-35, 8, -15, 8);
+            drawTransformedLine(15, 0, 35, 0);
+            drawTransformedLine(-15, -16, -15, 16);
+            drawTransformedLine(-15, -16, 0, -16);
+            drawTransformedLine(-15, 16, 0, 16);
             for(int j = -6; j < 6; ++j) {
                 float step = PI / 12.0f;
-                SDL_RenderLine(renderer, center.x + 15 * zoom * std::cos(j * step), center.y + 16 * zoom * std::sin(j * step),
-                               center.x + 15 * zoom * std::cos((j+1) * step), center.y + 16 * zoom * std::sin((j+1) * step));
+                Point p1 = transformLocal(15.0f * std::cos(j * step), 16.0f * std::sin(j * step));
+                Point p2 = transformLocal(15.0f * std::cos((j+1) * step), 16.0f * std::sin((j+1) * step));
+                SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
             }
         }
         else if (comp.type == "OR Gate") {
-            SDL_RenderLine(renderer, center.x - 35 * zoom, center.y - 8 * zoom, center.x - 10 * zoom, center.y - 8 * zoom);
-            SDL_RenderLine(renderer, center.x - 35 * zoom, center.y + 8 * zoom, center.x - 10 * zoom, center.y + 8 * zoom);
-            SDL_RenderLine(renderer, center.x + 25 * zoom, center.y, center.x + 35 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x - 15 * zoom, center.y - 20 * zoom, center.x - 5 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x - 5 * zoom, center.y, center.x - 15 * zoom, center.y + 20 * zoom);
-            SDL_RenderLine(renderer, center.x - 15 * zoom, center.y - 20 * zoom, center.x + 5 * zoom, center.y - 15 * zoom);
-            SDL_RenderLine(renderer, center.x + 5 * zoom, center.y - 15 * zoom, center.x + 25 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x - 15 * zoom, center.y + 20 * zoom, center.x + 5 * zoom, center.y + 15 * zoom);
-            SDL_RenderLine(renderer, center.x + 5 * zoom, center.y + 15 * zoom, center.x + 25 * zoom, center.y);
+            drawTransformedLine(-35, -8, -10, -8);
+            drawTransformedLine(-35, 8, -10, 8);
+            drawTransformedLine(25, 0, 35, 0);
+            drawTransformedLine(-15, -20, -5, 0);
+            drawTransformedLine(-5, 0, -15, 20);
+            drawTransformedLine(-15, -20, 5, -15);
+            drawTransformedLine(5, -15, 25, 0);
+            drawTransformedLine(-15, 20, 5, 15);
+            drawTransformedLine(5, 15, 25, 0);
         }
         else if (comp.type == "NOT Gate") {
-            SDL_RenderLine(renderer, center.x - 35 * zoom, center.y, center.x - 15 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x + 15 * zoom, center.y, center.x + 35 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x - 15 * zoom, center.y - 15 * zoom, center.x - 15 * zoom, center.y + 15 * zoom);
-            SDL_RenderLine(renderer, center.x - 15 * zoom, center.y - 15 * zoom, center.x + 5 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x - 15 * zoom, center.y + 15 * zoom, center.x + 5 * zoom, center.y);
-            drawCanvasCircle(center.x + 10 * zoom, center.y, 5 * zoom);
+            drawTransformedLine(-35, 0, -15, 0);
+            drawTransformedLine(15, 0, 35, 0);
+            drawTransformedLine(-15, -15, -15, 15);
+            drawTransformedLine(-15, -15, 5, 0);
+            drawTransformedLine(-15, 15, 5, 0);
+            drawTransformedCircle(10, 0, 5);
         }
         else if (comp.type == "Flip-Flop") {
-            SDL_FRect ffBody{center.x - 20 * zoom, center.y - 25 * zoom, 40 * zoom, 50 * zoom};
-            SDL_RenderRect(renderer, &ffBody);
-            SDL_RenderLine(renderer, center.x - 35 * zoom, center.y - 10 * zoom, center.x - 20 * zoom, center.y - 10 * zoom);
-            SDL_RenderLine(renderer, center.x - 35 * zoom, center.y + 10 * zoom, center.x - 20 * zoom, center.y + 10 * zoom);
-            SDL_RenderLine(renderer, center.x + 20 * zoom, center.y - 10 * zoom, center.x + 35 * zoom, center.y - 10 * zoom);
-            SDL_RenderLine(renderer, center.x + 20 * zoom, center.y + 10 * zoom, center.x + 35 * zoom, center.y + 10 * zoom);
-            SDL_RenderLine(renderer, center.x - 20 * zoom, center.y + 5 * zoom, center.x - 12 * zoom, center.y + 10 * zoom);
-            SDL_RenderLine(renderer, center.x - 12 * zoom, center.y + 10 * zoom, center.x - 20 * zoom, center.y + 15 * zoom);
-            drawCanvasCircle(center.x + 24 * zoom, center.y + 10 * zoom, 4 * zoom);
+            drawTransformedLine(-20, -25, 20, -25);
+            drawTransformedLine(20, -25, 20, 25);
+            drawTransformedLine(20, 25, -20, 25);
+            drawTransformedLine(-20, 25, -20, -25);
+            drawTransformedLine(-35, -10, -20, -10);
+            drawTransformedLine(-35, 10, -20, 10);
+            drawTransformedLine(20, -10, 35, -10);
+            drawTransformedLine(20, 10, 35, 10);
+            drawTransformedLine(-20, 5, -12, 10);
+            drawTransformedLine(-12, 10, -20, 15);
+            drawTransformedCircle(24, 10, 4);
         }
-            // ==========================================
-            // شاخه منابع POWER
-            // ==========================================
         else if (comp.type == "DC Source") {
-            SDL_RenderLine(renderer, center.x, center.y - 30 * zoom, center.x, center.y - 10 * zoom);
-            SDL_RenderLine(renderer, center.x, center.y + 10 * zoom, center.x, center.y + 30 * zoom);
-            SDL_RenderLine(renderer, center.x - 15 * zoom, center.y - 10 * zoom, center.x + 15 * zoom, center.y - 10 * zoom);
-            SDL_RenderLine(renderer, center.x - 8 * zoom, center.y + 10 * zoom, center.x + 8 * zoom, center.y + 10 * zoom);
+            drawTransformedLine(0, -30, 0, -10);
+            drawTransformedLine(0, 10, 0, 30);
+            drawTransformedLine(-15, -10, 15, -10);
+            drawTransformedLine(-8, 10, 8, 10);
         }
         else if (comp.type == "AC Source") {
-            SDL_RenderLine(renderer, center.x, center.y - 30 * zoom, center.x, center.y - 15 * zoom);
-            SDL_RenderLine(renderer, center.x, center.y + 15 * zoom, center.x, center.y + 30 * zoom);
-            drawCanvasCircle(center.x, center.y, 15 * zoom);
+            drawTransformedLine(0, -30, 0, -15);
+            drawTransformedLine(0, 15, 0, 30);
+            drawTransformedCircle(0, 0, 15);
             for(float x = -8; x <= 8; x += 1.0f) {
-                float y1 = std::sin(x * PI / 8.0f) * 5.0f * zoom;
-                float y2 = std::sin((x+1) * PI / 8.0f) * 5.0f * zoom;
-                SDL_RenderLine(renderer, center.x + x * zoom, center.y - y1, center.x + (x + 1) * zoom, center.y - y2);
+                float y1 = std::sin(x * PI / 8.0f) * 5.0f;
+                float y2 = std::sin((x+1) * PI / 8.0f) * 5.0f;
+                Point p1 = transformLocal(x, -y1);
+                Point p2 = transformLocal(x + 1, -y2);
+                SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
             }
         }
         else if (comp.type == "Ground") {
-            SDL_RenderLine(renderer, center.x, center.y - 15 * zoom, center.x, center.y);
-            SDL_RenderLine(renderer, center.x - 12 * zoom, center.y, center.x + 12 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x - 8 * zoom, center.y + 4 * zoom, center.x + 8 * zoom, center.y + 4 * zoom);
-            SDL_RenderLine(renderer, center.x - 4 * zoom, center.y + 8 * zoom, center.x + 4 * zoom, center.y + 8 * zoom);
+            drawTransformedLine(0, -15, 0, 0);
+            drawTransformedLine(-12, 0, 12, 0);
+            drawTransformedLine(-8, 4, 8, 4);
+            drawTransformedLine(-4, 8, 4, 8);
         }
-            // ==========================================
-            // شاخه ابزارهای MEASUREMENT
-            // ==========================================
         else if (comp.type == "Voltmeter" || comp.type == "Ammeter") {
-            SDL_RenderLine(renderer, center.x, center.y - 30 * zoom, center.x, center.y - 15 * zoom);
-            SDL_RenderLine(renderer, center.x, center.y + 15 * zoom, center.x, center.y + 30 * zoom);
-            drawCanvasCircle(center.x, center.y, 15 * zoom);
+            drawTransformedLine(0, -30, 0, -15);
+            drawTransformedLine(0, 15, 0, 30);
+            drawTransformedCircle(0, 0, 15);
             if(comp.type == "Voltmeter") {
-                SDL_RenderLine(renderer, center.x - 5 * zoom, center.y - 5 * zoom, center.x, center.y + 5 * zoom);
-                SDL_RenderLine(renderer, center.x, center.y + 5 * zoom, center.x + 5 * zoom, center.y - 5 * zoom);
+                drawTransformedLine(-5, -5, 0, 5);
+                drawTransformedLine(0, 5, 5, -5);
             } else {
-                SDL_RenderLine(renderer, center.x, center.y - 6 * zoom, center.x - 5 * zoom, center.y + 5 * zoom);
-                SDL_RenderLine(renderer, center.x, center.y - 6 * zoom, center.x + 5 * zoom, center.y + 5 * zoom);
-                SDL_RenderLine(renderer, center.x - 3 * zoom, center.y + 2 * zoom, center.x + 3 * zoom, center.y + 2 * zoom);
+                drawTransformedLine(0, -6, -5, 5);
+                drawTransformedLine(0, -6, 5, 5);
+                drawTransformedLine(-3, 2, 3, 2);
             }
         }
         else if (comp.type == "Oscilloscope") {
-            SDL_FRect oscOuter{center.x - 25 * zoom, center.y - 20 * zoom, 50 * zoom, 40 * zoom};
-            SDL_RenderRect(renderer, &oscOuter);
-            SDL_FRect oscScreen{center.x - 20 * zoom, center.y - 15 * zoom, 30 * zoom, 30 * zoom};
-            SDL_RenderRect(renderer, &oscScreen);
-            drawCanvasCircle(center.x + 17 * zoom, center.y - 5 * zoom, 3 * zoom);
-            drawCanvasCircle(center.x + 17 * zoom, center.y + 5 * zoom, 3 * zoom);
+            drawTransformedLine(-25, -20, 25, -20);
+            drawTransformedLine(25, -20, 25, 20);
+            drawTransformedLine(25, 20, -25, 20);
+            drawTransformedLine(-25, 20, -25, -20);
+            drawTransformedLine(-20, -15, 10, -15);
+            drawTransformedLine(10, -15, 10, 15);
+            drawTransformedLine(10, 15, -20, 15);
+            drawTransformedLine(-20, 15, -20, -15);
+            drawTransformedCircle(17, -5, 3);
+            drawTransformedCircle(17, 5, 3);
             for(float x = -18; x <= 8; x += 1.0f) {
-                float y1 = std::sin((x+18) * PI / 6.0f) * 8.0f * zoom;
-                float y2 = std::sin((x+19) * PI / 6.0f) * 8.0f * zoom;
-                SDL_RenderLine(renderer, center.x + x * zoom, center.y - y1, center.x + (x + 1) * zoom, center.y - y2);
+                float y1 = std::sin((x+18) * PI / 6.0f) * 8.0f;
+                float y2 = std::sin((x+19) * PI / 6.0f) * 8.0f;
+                Point p1 = transformLocal(x, -y1);
+                Point p2 = transformLocal(x + 1, -y2);
+                SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
             }
         }
-            // کادر پیش‌فرض برای موارد پیش‌بینی نشده
         else {
-            SDL_SetRenderDrawColor(renderer, 90, 100, 110, 255);
-            SDL_FRect boundaryBox{center.x - 20 * zoom, center.y - 15 * zoom, 40 * zoom, 30 * zoom};
-            SDL_RenderRect(renderer, &boundaryBox);
-            SDL_RenderLine(renderer, center.x - 35 * zoom, center.y, center.x - 20 * zoom, center.y);
-            SDL_RenderLine(renderer, center.x + 20 * zoom, center.y, center.x + 35 * zoom, center.y);
+            drawTransformedLine(-20, -15, 20, -15);
+            drawTransformedLine(20, -15, 20, 15);
+            drawTransformedLine(20, 15, -20, 15);
+            drawTransformedLine(-20, 15, -20, -15);
+            drawTransformedLine(-35, 0, -20, 0);
+            drawTransformedLine(20, 0, 35, 0);
         }
 
-        // ۴. چاپ متون شناسه قطعات متناسب با فاکتور زوم بوم نقاشی
+        // ۴. رندر متن شناسه مدار (Label ID) و مقدار الکترونیکی (Value String) به صورت پویا
         if (font) {
-            std::string textString = comp.labelId;
+            // نمایش شناسه قطعه (مثال: R1) بالای قطعه
+            std::string labelText = comp.labelId;
             SDL_Color textColor{35, 45, 60, 255};
-            SDL_Surface* surface = TTF_RenderText_Blended(font, textString.c_str(), 0, textColor);
+            SDL_Surface* surface = TTF_RenderText_Blended(font, labelText.c_str(), 0, textColor);
             if (surface) {
                 SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
                 if (texture) {
-                    float textScale = std::min(0.7f, canvas_.zoom() * 0.7f);
+                    float textScale = std::min(0.65f, canvas_.zoom() * 0.65f);
                     SDL_FRect destRect{
                             center.x - (surface->w * textScale) / 2.0f,
-                            screenBox.y - surface->h * textScale - 2.0f,
+                            screenBox.y - surface->h * textScale - 3.0f,
                             static_cast<float>(surface->w) * textScale,
                             static_cast<float>(surface->h) * textScale
                     };
@@ -372,6 +401,27 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
                     SDL_DestroyTexture(texture);
                 }
                 SDL_DestroySurface(surface);
+            }
+
+            // نمایش مقدار الکترونیکی تنظیم شده (مثال: 10k) زیر قطعه در صورت وجود
+            if (!comp.valueStr.empty()) {
+                SDL_Color valueColor{40, 100, 170, 255}; // آبی تیره برای مقادیر فنی
+                SDL_Surface* valSurf = TTF_RenderText_Blended(font, comp.valueStr.c_str(), 0, valueColor);
+                if (valSurf) {
+                    SDL_Texture* valTex = SDL_CreateTextureFromSurface(renderer, valSurf);
+                    if (valTex) {
+                        float textScale = std::min(0.6f, canvas_.zoom() * 0.6f);
+                        SDL_FRect destRect{
+                                center.x - (valSurf->w * textScale) / 2.0f,
+                                screenBox.y + screenBox.h + 2.0f,
+                                static_cast<float>(valSurf->w) * textScale,
+                                static_cast<float>(valSurf->h) * textScale
+                        };
+                        SDL_RenderTexture(renderer, valTex, nullptr, &destRect);
+                        SDL_DestroyTexture(valTex);
+                    }
+                    SDL_DestroySurface(valSurf);
+                }
             }
         }
     }
