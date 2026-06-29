@@ -1,9 +1,9 @@
-//STARTMENU.CPP
+// src/StartMenu.cpp
 #include "StartMenu.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
-
+#include <algorithm>
 #include <cstddef>
 #include <sstream>
 #include <string>
@@ -29,14 +29,10 @@ namespace {
                     float y,
                     SDL_Color color,
                     bool centered = false) {
-        if (!renderer || !font || text.empty()) {
-            return;
-        }
+        if (!renderer || !font || text.empty()) return;
 
         SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), text.size(), color);
-        if (!surface) {
-            return;
-        }
+        if (!surface) return;
 
         SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
         if (!texture) {
@@ -52,7 +48,6 @@ namespace {
         };
 
         SDL_RenderTexture(renderer, texture, nullptr, &destination);
-
         SDL_DestroyTexture(texture);
         SDL_DestroySurface(surface);
     }
@@ -67,23 +62,40 @@ namespace {
 
 const char* pageSizeTypeToString(PageSizeType type) {
     switch (type) {
-        case PageSizeType::A4:
-            return "A4";
-        case PageSizeType::A3:
-            return "A3";
-        case PageSizeType::Custom:
-            return "Custom";
-        default:
-            return "Unknown";
+        case PageSizeType::A4: return "A4";
+        case PageSizeType::A3: return "A3";
+        case PageSizeType::Custom: return "Custom";
+        default: return "Unknown";
     }
 }
 
 StartMenu::StartMenu()
         : selectedPageSize_{210.0, 297.0, PageSizeType::A4},
-          recentProjects_{"Amplifier Board", "Power Supply Module", "LED Matrix Controller"},
+          recentProjects_{"circuit.txt"}, // یه پروژه دیفالت برای شروع
           currentView_(MenuView::Main),
-          requestedState_(AppState::MainMenu) {
+          requestedState_(AppState::MainMenu),
+          shouldLoadProject_(false) {
     initializeButtons();
+}
+
+bool StartMenu::shouldLoadProject() const {
+    return shouldLoadProject_;
+}
+
+void StartMenu::resetLoadProject() {
+    shouldLoadProject_ = false;
+}
+
+std::string StartMenu::getSelectedProjectFile() const {
+    return selectedProjectFile_;
+}
+
+// تابع طلایی: اضافه کردن پروژه جدید به لیست منوها
+void StartMenu::addSavedProject(const std::string& filename) {
+    if (std::find(recentProjects_.begin(), recentProjects_.end(), filename) == recentProjects_.end()) {
+        recentProjects_.insert(recentProjects_.begin(), filename); // اضافه کردن به بالای لیست
+        initializeButtons(); // ریفرش کردن دکمه‌های منو
+    }
 }
 
 void StartMenu::handleEvent(const SDL_Event& event) {
@@ -106,34 +118,29 @@ void StartMenu::handleEvent(const SDL_Event& event) {
             case MenuView::RecentProjects:
                 handleRecentProjectsClick(mouseX, mouseY);
                 break;
+            case MenuView::OpenProject:
+                handleOpenProjectClick(mouseX, mouseY);
+                break;
         }
-
         updateHoverState(mouseX, mouseY);
     }
 }
 
 void StartMenu::updateHoverState(float mouseX, float mouseY) {
     auto updateButtons = [mouseX, mouseY](std::vector<Button>& buttons) {
-        for (Button& button : buttons) {
-            button.setHovered(button.contains(mouseX, mouseY));
-        }
+        for (Button& button : buttons) button.setHovered(button.contains(mouseX, mouseY));
     };
 
     updateButtons(mainButtons_);
     updateButtons(pageSizeButtons_);
     updateButtons(recentProjectButtons_);
+    updateButtons(openProjectButtons_);
 }
 
 void StartMenu::render(SDL_Renderer* renderer, TTF_Font* font) const {
-    if (!renderer) {
-        return;
-    }
+    if (!renderer) return;
 
-    SDL_SetRenderDrawColor(renderer,
-                           BackgroundColor.r,
-                           BackgroundColor.g,
-                           BackgroundColor.b,
-                           BackgroundColor.a);
+    SDL_SetRenderDrawColor(renderer, BackgroundColor.r, BackgroundColor.g, BackgroundColor.b, BackgroundColor.a);
     SDL_RenderClear(renderer);
 
     switch (currentView_) {
@@ -145,6 +152,9 @@ void StartMenu::render(SDL_Renderer* renderer, TTF_Font* font) const {
             break;
         case MenuView::RecentProjects:
             renderRecentProjects(renderer, font);
+            break;
+        case MenuView::OpenProject:
+            renderOpenProject(renderer, font);
             break;
     }
 }
@@ -166,169 +176,79 @@ void StartMenu::initializeButtons() {
     float y = 210.0f;
 
     mainButtons_.clear();
-    mainButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight},
-                              "New Project",
-                              ButtonNormalColor,
-                              ButtonHoverColor,
-                              ButtonTextColor);
+    mainButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight}, "New Project", ButtonNormalColor, ButtonHoverColor, ButtonTextColor);
     y += ButtonHeight + ButtonSpacing;
-
-    mainButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight},
-                              "Open Project",
-                              ButtonNormalColor,
-                              ButtonHoverColor,
-                              ButtonTextColor);
+    mainButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight}, "Open Project", ButtonNormalColor, ButtonHoverColor, ButtonTextColor);
     y += ButtonHeight + ButtonSpacing;
-
-    mainButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight},
-                              "Select Page Size",
-                              ButtonNormalColor,
-                              ButtonHoverColor,
-                              ButtonTextColor);
+    mainButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight}, "Select Page Size", ButtonNormalColor, ButtonHoverColor, ButtonTextColor);
     y += ButtonHeight + ButtonSpacing;
-
-    mainButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight},
-                              "Recent Projects",
-                              ButtonNormalColor,
-                              ButtonHoverColor,
-                              ButtonTextColor);
+    mainButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight}, "Recent Projects", ButtonNormalColor, ButtonHoverColor, ButtonTextColor);
     y += ButtonHeight + ButtonSpacing;
-
-    mainButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight},
-                              "Exit",
-                              ButtonNormalColor,
-                              ButtonHoverColor,
-                              ButtonTextColor);
+    mainButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight}, "Exit", ButtonNormalColor, ButtonHoverColor, ButtonTextColor);
 
     y = 240.0f;
     pageSizeButtons_.clear();
-    pageSizeButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight},
-                                  "A4",
-                                  ButtonNormalColor,
-                                  ButtonHoverColor,
-                                  ButtonTextColor);
+    pageSizeButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight}, "A4", ButtonNormalColor, ButtonHoverColor, ButtonTextColor);
     y += ButtonHeight + ButtonSpacing;
-
-    pageSizeButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight},
-                                  "A3",
-                                  ButtonNormalColor,
-                                  ButtonHoverColor,
-                                  ButtonTextColor);
+    pageSizeButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight}, "A3", ButtonNormalColor, ButtonHoverColor, ButtonTextColor);
     y += ButtonHeight + ButtonSpacing;
-
-    pageSizeButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight},
-                                  "Custom",
-                                  ButtonNormalColor,
-                                  ButtonHoverColor,
-                                  ButtonTextColor);
+    pageSizeButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight}, "Custom", ButtonNormalColor, ButtonHoverColor, ButtonTextColor);
     y += ButtonHeight + ButtonSpacing;
-
-    pageSizeButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight},
-                                  "Back",
-                                  ButtonNormalColor,
-                                  ButtonHoverColor,
-                                  ButtonTextColor);
+    pageSizeButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight}, "Back", ButtonNormalColor, ButtonHoverColor, ButtonTextColor);
 
     recentProjectButtons_.clear();
-    recentProjectButtons_.emplace_back(SDL_FRect{x, 470.0f, ButtonWidth, ButtonHeight},
-                                       "Back",
-                                       ButtonNormalColor,
-                                       ButtonHoverColor,
-                                       ButtonTextColor);
+    float rpY = 175.0f;
+    for (const auto& proj : recentProjects_) {
+        recentProjectButtons_.emplace_back(SDL_FRect{x, rpY, ButtonWidth, ButtonHeight}, proj, ButtonNormalColor, ButtonHoverColor, ButtonTextColor);
+        rpY += ButtonHeight + ButtonSpacing;
+    }
+    recentProjectButtons_.emplace_back(SDL_FRect{x, 470.0f, ButtonWidth, ButtonHeight}, "Back", ButtonNormalColor, ButtonHoverColor, ButtonTextColor);
+
+    openProjectButtons_.clear();
+    float opY = 240.0f;
+    for (const auto& proj : recentProjects_) {
+        openProjectButtons_.emplace_back(SDL_FRect{x, opY, ButtonWidth, ButtonHeight}, proj, ButtonNormalColor, ButtonHoverColor, ButtonTextColor);
+        opY += ButtonHeight + ButtonSpacing;
+    }
+    openProjectButtons_.emplace_back(SDL_FRect{x, 470.0f, ButtonWidth, ButtonHeight}, "Back", ButtonNormalColor, ButtonHoverColor, ButtonTextColor);
 }
 
 void StartMenu::renderMainMenu(SDL_Renderer* renderer, TTF_Font* font) const {
-    renderText(renderer,
-               font,
-               "Circuit Design Application",
-               WindowWidth / 2.0f,
-               80.0f,
-               TitleColor,
-               true);
-
-    renderText(renderer,
-               font,
-               pageSizeToDisplayText(selectedPageSize_),
-               WindowWidth / 2.0f,
-               145.0f,
-               MutedTextColor,
-               true);
-
-    for (const Button& button : mainButtons_) {
-        button.render(renderer, font);
-    }
+    renderText(renderer, font, "Circuit Design Application", WindowWidth / 2.0f, 80.0f, TitleColor, true);
+    renderText(renderer, font, pageSizeToDisplayText(selectedPageSize_), WindowWidth / 2.0f, 145.0f, MutedTextColor, true);
+    for (const Button& button : mainButtons_) button.render(renderer, font);
 }
 
 void StartMenu::renderPageSizeSelection(SDL_Renderer* renderer, TTF_Font* font) const {
-    renderText(renderer,
-               font,
-               "Select Page Size",
-               WindowWidth / 2.0f,
-               90.0f,
-               TitleColor,
-               true);
-
-    renderText(renderer,
-               font,
-               pageSizeToDisplayText(selectedPageSize_),
-               WindowWidth / 2.0f,
-               155.0f,
-               MutedTextColor,
-               true);
-
-    for (const Button& button : pageSizeButtons_) {
-        button.render(renderer, font);
-    }
+    renderText(renderer, font, "Select Page Size", WindowWidth / 2.0f, 90.0f, TitleColor, true);
+    renderText(renderer, font, pageSizeToDisplayText(selectedPageSize_), WindowWidth / 2.0f, 155.0f, MutedTextColor, true);
+    for (const Button& button : pageSizeButtons_) button.render(renderer, font);
 }
 
 void StartMenu::renderRecentProjects(SDL_Renderer* renderer, TTF_Font* font) const {
-    renderText(renderer,
-               font,
-               "Recent Projects",
-               WindowWidth / 2.0f,
-               90.0f,
-               TitleColor,
-               true);
-
-    float y = 175.0f;
+    renderText(renderer, font, "Recent Projects", WindowWidth / 2.0f, 90.0f, TitleColor, true);
 
     if (recentProjects_.empty()) {
-        renderText(renderer,
-                   font,
-                   "No recent projects found.",
-                   WindowWidth / 2.0f,
-                   y,
-                   MutedTextColor,
-                   true);
-    } else {
-        for (std::size_t index = 0; index < recentProjects_.size(); ++index) {
-            renderText(renderer,
-                       font,
-                       std::to_string(index + 1) + ". " + recentProjects_[index],
-                       260.0f,
-                       y,
-                       TextColor);
-            y += 42.0f;
-        }
+        renderText(renderer, font, "No recent projects found.", WindowWidth / 2.0f, 175.0f, MutedTextColor, true);
     }
+    for (const Button& button : recentProjectButtons_) button.render(renderer, font);
+}
 
-    for (const Button& button : recentProjectButtons_) {
-        button.render(renderer, font);
-    }
+void StartMenu::renderOpenProject(SDL_Renderer* renderer, TTF_Font* font) const {
+    renderText(renderer, font, "Open Saved Project", WindowWidth / 2.0f, 90.0f, TitleColor, true);
+    renderText(renderer, font, "Click on a file to load:", WindowWidth / 2.0f, 155.0f, MutedTextColor, true);
+    for (const Button& button : openProjectButtons_) button.render(renderer, font);
 }
 
 void StartMenu::handleMainMenuClick(float mouseX, float mouseY) {
     for (const Button& button : mainButtons_) {
-        if (!button.contains(mouseX, mouseY)) {
-            continue;
-        }
+        if (!button.contains(mouseX, mouseY)) continue;
 
         const std::string& label = button.getLabel();
-
         if (label == "New Project") {
             requestedState_ = AppState::NewProject;
         } else if (label == "Open Project") {
-            requestedState_ = AppState::OpenProject;
+            currentView_ = MenuView::OpenProject;
         } else if (label == "Select Page Size") {
             currentView_ = MenuView::PageSizeSelection;
         } else if (label == "Recent Projects") {
@@ -336,38 +256,49 @@ void StartMenu::handleMainMenuClick(float mouseX, float mouseY) {
         } else if (label == "Exit") {
             requestedState_ = AppState::Exit;
         }
-
         return;
     }
 }
 
 void StartMenu::handlePageSizeClick(float mouseX, float mouseY) {
     for (const Button& button : pageSizeButtons_) {
-        if (!button.contains(mouseX, mouseY)) {
-            continue;
-        }
+        if (!button.contains(mouseX, mouseY)) continue;
 
         const std::string& label = button.getLabel();
-
-        if (label == "A4") {
-            selectedPageSize_ = PageSize{210.0, 297.0, PageSizeType::A4};
-        } else if (label == "A3") {
-            selectedPageSize_ = PageSize{297.0, 420.0, PageSizeType::A3};
-        } else if (label == "Custom") {
-            selectedPageSize_ = PageSize{500.0, 350.0, PageSizeType::Custom};
-        } else if (label == "Back") {
-            currentView_ = MenuView::Main;
-        }
-
+        if (label == "A4") selectedPageSize_ = PageSize{210.0, 297.0, PageSizeType::A4};
+        else if (label == "A3") selectedPageSize_ = PageSize{297.0, 420.0, PageSizeType::A3};
+        else if (label == "Custom") selectedPageSize_ = PageSize{500.0, 350.0, PageSizeType::Custom};
+        else if (label == "Back") currentView_ = MenuView::Main;
         return;
     }
 }
 
 void StartMenu::handleRecentProjectsClick(float mouseX, float mouseY) {
     for (const Button& button : recentProjectButtons_) {
-        if (button.contains(mouseX, mouseY) && button.getLabel() == "Back") {
+        if (!button.contains(mouseX, mouseY)) continue;
+
+        if (button.getLabel() == "Back") {
             currentView_ = MenuView::Main;
-            return;
+        } else {
+            selectedProjectFile_ = button.getLabel();
+            shouldLoadProject_ = true;
+            requestedState_ = AppState::NewProject;
         }
+        return;
+    }
+}
+
+void StartMenu::handleOpenProjectClick(float mouseX, float mouseY) {
+    for (const Button& button : openProjectButtons_) {
+        if (!button.contains(mouseX, mouseY)) continue;
+
+        if (button.getLabel() == "Back") {
+            currentView_ = MenuView::Main;
+        } else {
+            selectedProjectFile_ = button.getLabel();
+            shouldLoadProject_ = true;
+            requestedState_ = AppState::NewProject;
+        }
+        return;
     }
 }

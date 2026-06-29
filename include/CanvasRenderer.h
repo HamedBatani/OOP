@@ -1,4 +1,4 @@
-// CanvasRenderer.h
+// include/CanvasRenderer.h
 #pragma once
 
 #include <iosfwd>
@@ -15,6 +15,8 @@ public:
     void renderState(std::ostream& output) const;
     void renderGridPreview(std::ostream& output, int columns = 21, int rows = 11) const;
     void renderSnapTest(std::ostream& output, const Point& rawMouseScreenPoint) const;
+
+    // متد جدید برای رندر گرافیکی با استایل روشن (کرم/خاکستری)
     void renderSDL(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int windowHeight) const;
 
 private:
