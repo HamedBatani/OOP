@@ -6,6 +6,7 @@
 #include "Toolbar.h"
 #include "ComponentLibrary.h"
 #include "ProjectManager.h"
+#include "ComponentInstance.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
@@ -13,6 +14,8 @@
 #include <iostream>
 #include <string>
 #include <memory>
+#include <map>
+#include <algorithm>
 
 namespace {
     constexpr int WindowWidth = 800;
@@ -46,21 +49,6 @@ namespace {
         SDL_RenderTexture(renderer, texture, nullptr, &destination);
         SDL_DestroyTexture(texture);
         SDL_DestroySurface(surface);
-    }
-
-    void renderPlaceholderScreen(SDL_Renderer* renderer,
-                                 TTF_Font* font,
-                                 const std::string& title,
-                                 const std::string& subtitle) {
-        const SDL_Color backgroundColor{24, 28, 36, 255};
-        const SDL_Color titleColor{235, 240, 255, 255};
-        const SDL_Color subtitleColor{170, 178, 194, 255};
-
-        SDL_SetRenderDrawColor(renderer, backgroundColor.r, backgroundColor.g, backgroundColor.b, backgroundColor.a);
-        SDL_RenderClear(renderer);
-
-        renderText(renderer, font, title, WindowWidth / 2.0f, 235.0f, titleColor);
-        renderText(renderer, font, subtitle, WindowWidth / 2.0f, 295.0f, subtitleColor);
     }
 
     TTF_Font* loadFont() {
@@ -105,9 +93,18 @@ int main(int, char**) {
     std::string activeAction = "";
     std::string selectedComponent = "None";
 
-    // متغیرهای مدیریت پنجره ذخیره‌سازی
     bool isSaveDialogOpen = false;
     std::string saveFileName = "";
+
+    std::vector<ComponentInstance> placedComponents;
+    std::map<std::string, int> componentCounters;
+
+    bool isSelectDragging = false;
+    Point selectDragStartScreen{0.0f, 0.0f};
+    SDL_FRect visualSelectBox{0.0f, 0.0f, 0.0f, 0.0f};
+
+    bool isDraggingComponents = false;
+    Point dragStartWorldMouse{0.0f, 0.0f};
 
     while (running && currentState != AppState::Exit) {
         SDL_Event event;
@@ -124,10 +121,9 @@ int main(int, char**) {
             }
             else if (currentState == AppState::NewProject) {
 
-                // --- مدیریت رویدادهای پنجره پاپ‌آپ Save ---
                 if (isSaveDialogOpen) {
                     if (event.type == SDL_EVENT_TEXT_INPUT) {
-                        if (saveFileName.size() < 25) { // محدودیت کاراکتر اسم
+                        if (saveFileName.size() < 25) {
                             saveFileName += event.text.text;
                         }
                     } else if (event.type == SDL_EVENT_KEY_DOWN) {
@@ -136,21 +132,24 @@ int main(int, char**) {
                         } else if (event.key.key == SDLK_RETURN || event.key.key == SDLK_KP_ENTER) {
                             if (!saveFileName.empty()) {
                                 std::string fullPath = saveFileName + ".txt";
-                                // ذخیره پروژه در فایل
                                 if (ProjectManager::saveProject(fullPath, compLib.getActiveList())) {
-                                    startMenu.addSavedProject(fullPath); // اضافه کردن مستقیم به منوی اصلی
+                                    startMenu.addSavedProject(fullPath);
                                 }
                             }
                             isSaveDialogOpen = false;
                         } else if (event.key.key == SDLK_ESCAPE) {
-                            isSaveDialogOpen = false; // بستن پنجره با دکمه Esc
+                            isSaveDialogOpen = false;
                         }
                     }
-                    continue; // وقتی دیالوگ بازه، رویدادها به پنل‌های دیگه ارسال نشن
+                    continue;
                 }
 
-                // هندل کردن میانبر Save (Ctrl+S)
+                // هندل کردن دکمه ESC برای رها کردن ابزار جاری و دیسلکت کردن
                 if (event.type == SDL_EVENT_KEY_DOWN) {
+                    if (event.key.key == SDLK_ESCAPE) {
+                        selectedComponent = "None"; // بازگشت به حالت انتخاب
+                        for (auto& comp : placedComponents) comp.isSelected = false;
+                    }
                     if ((event.key.mod & SDL_KMOD_CTRL) && event.key.key == SDLK_S) {
                         isSaveDialogOpen = true;
                         saveFileName = "";
@@ -161,13 +160,14 @@ int main(int, char**) {
                 compLib.handleEvent(event, selectedComponent);
 
                 if (activeAction == "Save") {
-                    isSaveDialogOpen = true; // باز کردن پنجره ذخیره
+                    isSaveDialogOpen = true;
                     saveFileName = "";
                     activeAction = "";
                 } else if (activeAction == "Load") {
                     canvas = nullptr;
                     canvasRenderer = nullptr;
-                    currentState = AppState::MainMenu; // برگشت به منو برای انتخاب فایل
+                    placedComponents.clear();
+                    currentState = AppState::MainMenu;
                     activeAction = "";
                 } else if (activeAction == "Grid Toggle" && canvas) {
                     canvas->grid().setVisible(!canvas->grid().isVisible());
@@ -175,27 +175,140 @@ int main(int, char**) {
                 } else if (activeAction == "Main Menu") {
                     canvas = nullptr;
                     canvasRenderer = nullptr;
+                    placedComponents.clear();
                     currentState = AppState::MainMenu;
                     activeAction = "";
                 }
 
                 if (canvas) {
+                    float canvasMouseX = event.motion.x - 180.0f;
+                    float canvasMouseY = event.motion.y - 50.0f;
+
                     if (event.type == SDL_EVENT_MOUSE_MOTION) {
-                        float canvasMouseX = event.motion.x - 180.0f;
-                        float canvasMouseY = event.motion.y - 50.0f;
                         canvas->setMouseScreenPosition({canvasMouseX, canvasMouseY});
 
-                        if (isPanning) canvas->pan({event.motion.xrel, event.motion.yrel});
+                        if (isPanning) {
+                            canvas->pan({event.motion.xrel, event.motion.yrel});
+                        }
+                        else if (isDraggingComponents) {
+                            Point currentWorldMouse = canvas->mouseWorldPosition();
+                            Point mouseDelta = currentWorldMouse - dragStartWorldMouse;
+
+                            for (auto& comp : placedComponents) {
+                                if (comp.isSelected) {
+                                    Point targetPos = comp.dragStartPos + mouseDelta;
+                                    comp.worldPos = canvas->snapToGrid(targetPos);
+                                }
+                            }
+                        }
+                        else if (isSelectDragging) {
+                            float x1 = selectDragStartScreen.x;
+                            float y1 = selectDragStartScreen.y;
+                            float x2 = static_cast<float>(event.motion.x);
+                            float y2 = static_cast<float>(event.motion.y);
+
+                            visualSelectBox.x = std::min(x1, x2);
+                            visualSelectBox.y = std::min(y1, y2);
+                            visualSelectBox.w = std::abs(x2 - x1);
+                            visualSelectBox.h = std::abs(y2 - y1);
+                        }
                     }
                     else if (event.type == SDL_EVENT_MOUSE_WHEEL) {
                         if (event.wheel.y > 0) canvas->zoomBy(1.1f);
                         else if (event.wheel.y < 0) canvas->zoomBy(0.9f);
                     }
                     else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
-                        if (event.button.button == SDL_BUTTON_MIDDLE) isPanning = true;
+                        if (event.button.button == SDL_BUTTON_MIDDLE) {
+                            isPanning = true;
+                        }
+                        else if (event.button.button == SDL_BUTTON_RIGHT) {
+                            // کلیک راست ابزار انتخابی جاری را لغو می‌کند و به حالت مود دیسلکت برمی‌گرداند
+                            selectedComponent = "None";
+                        }
+                        else if (event.button.button == SDL_BUTTON_LEFT) {
+                            if (event.button.x >= 180 && event.button.x <= 800 && event.button.y >= 50 && event.button.y <= 600) {
+
+                                if (selectedComponent != "None" && !selectedComponent.empty()) {
+                                    Point worldTarget = canvas->snapToGrid(canvas->mouseWorldPosition());
+
+                                    char prefix = std::toupper(selectedComponent[0]);
+                                    std::string prefixStr(1, prefix);
+                                    componentCounters[prefixStr]++;
+                                    std::string finalId = prefixStr + std::to_string(componentCounters[prefixStr]);
+
+                                    placedComponents.emplace_back(selectedComponent, finalId, "", worldTarget);
+                                }
+                                else {
+                                    Point worldMouse = canvas->mouseWorldPosition();
+                                    bool hitDetected = false;
+                                    int hitIndex = -1;
+
+                                    int totalComponents = static_cast<int>(placedComponents.size());
+                                    for (int i = totalComponents - 1; i >= 0; --i) {
+                                        SDL_FRect box = placedComponents[i].getWorldBoundingBox();
+                                        if (worldMouse.x >= box.x && worldMouse.x <= box.x + box.w &&
+                                            worldMouse.y >= box.y && worldMouse.y <= box.y + box.h) {
+                                            hitDetected = true;
+                                            hitIndex = i;
+                                            break;
+                                        }
+                                    }
+
+                                    if (hitDetected) {
+                                        if (!placedComponents[hitIndex].isSelected) {
+                                            if (!(event.key.mod & SDL_KMOD_SHIFT)) {
+                                                for (auto& comp : placedComponents) comp.isSelected = false;
+                                            }
+                                            placedComponents[hitIndex].isSelected = true;
+                                        }
+
+                                        isDraggingComponents = true;
+                                        dragStartWorldMouse = worldMouse;
+                                        for (auto& comp : placedComponents) {
+                                            if (comp.isSelected) {
+                                                comp.dragStartPos = comp.worldPos;
+                                            }
+                                        }
+                                    }
+                                    else {
+                                        if (!(event.key.mod & SDL_KMOD_SHIFT)) {
+                                            for (auto& comp : placedComponents) comp.isSelected = false;
+                                        }
+                                        isSelectDragging = true;
+                                        selectDragStartScreen = { static_cast<float>(event.button.x), static_cast<float>(event.button.y) };
+                                        visualSelectBox = { static_cast<float>(event.button.x), static_cast<float>(event.button.y), 0.0f, 0.0f };
+                                    }
+                                }
+                            }
+                        }
                     }
                     else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
-                        if (event.button.button == SDL_BUTTON_MIDDLE) isPanning = false;
+                        if (event.button.button == SDL_BUTTON_MIDDLE) {
+                            isPanning = false;
+                        }
+                        else if (event.button.button == SDL_BUTTON_LEFT) {
+                            if (isDraggingComponents) {
+                                isDraggingComponents = false;
+                            }
+                            else if (isSelectDragging) {
+                                isSelectDragging = false;
+
+                                Point worldStart = canvas->screenToWorld({ visualSelectBox.x - 180.0f, visualSelectBox.y - 50.0f });
+                                Point worldEnd = canvas->screenToWorld({ (visualSelectBox.x + visualSelectBox.w) - 180.0f, (visualSelectBox.y + visualSelectBox.h) - 50.0f });
+
+                                float minX = std::min(worldStart.x, worldEnd.x);
+                                float maxX = std::max(worldStart.x, worldEnd.x);
+                                float minY = std::min(worldStart.y, worldEnd.y);
+                                float maxY = std::max(worldStart.y, worldEnd.y);
+
+                                for (auto& comp : placedComponents) {
+                                    SDL_FRect box = comp.getWorldBoundingBox();
+                                    if (box.x >= minX && (box.x + box.w) <= maxX && box.y >= minY && (box.y + box.h) <= maxY) {
+                                        comp.isSelected = true;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -210,8 +323,9 @@ int main(int, char**) {
                     const PageSize& size = startMenu.getSelectedPageSize();
                     canvas = std::make_unique<Canvas>(static_cast<float>(size.width), static_cast<float>(size.height));
                     canvasRenderer = std::make_unique<CanvasRenderer>(*canvas);
+                    placedComponents.clear();
+                    componentCounters.clear();
 
-                    // لود کردن فایل در صورت درخواست از منو
                     if (startMenu.shouldLoadProject()) {
                         std::vector<std::string> loadedList;
                         if (ProjectManager::loadProject(startMenu.getSelectedProjectFile(), loadedList)) {
@@ -219,7 +333,7 @@ int main(int, char**) {
                         }
                         startMenu.resetLoadProject();
                     } else {
-                        compLib.setActiveList({}); // پاک کردن لیست برای یه پروژه واقعا جدید
+                        compLib.setActiveList({});
                     }
                 }
                 startMenu.resetRequestedState();
@@ -240,22 +354,32 @@ int main(int, char**) {
                     SDL_SetRenderViewport(renderer, &canvasViewport);
 
                     canvasRenderer->renderSDL(renderer, font, 620, 550);
+                    canvasRenderer->renderComponentsSDL(renderer, font, placedComponents);
 
                     SDL_SetRenderViewport(renderer, nullptr);
 
                     toolbar.render(renderer, font);
                     compLib.render(renderer, font, selectedComponent);
 
-                    // --- رسم کردن پنجره پاپ‌آپ Save رو صفحه ---
+                    if (isSelectDragging) {
+                        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
+                        SDL_SetRenderDrawColor(renderer, 0, 120, 215, 45);
+                        SDL_RenderFillRect(renderer, &visualSelectBox);
+
+                        SDL_SetRenderDrawColor(renderer, 0, 120, 215, 255);
+                        SDL_RenderRect(renderer, &visualSelectBox);
+
+                        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+                    }
+
                     if (isSaveDialogOpen) {
-                        // یک پس‌زمینه نیمه‌شفاف برای تاریک کردن پشت دیالوگ
                         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
                         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 180);
                         SDL_FRect screenRect{0, 0, static_cast<float>(currentW), static_cast<float>(currentH)};
                         SDL_RenderFillRect(renderer, &screenRect);
                         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 
-                        // کادر دیالوگ
                         SDL_FRect dialogRect{ currentW / 2.0f - 160.0f, currentH / 2.0f - 80.0f, 320.0f, 160.0f };
                         SDL_SetRenderDrawColor(renderer, 45, 55, 75, 255);
                         SDL_RenderFillRect(renderer, &dialogRect);
@@ -264,14 +388,12 @@ int main(int, char**) {
 
                         renderText(renderer, font, "Enter Project Name:", currentW / 2.0f, dialogRect.y + 20.0f, {255, 255, 255, 255});
 
-                        // باکس ورودی متن
                         SDL_FRect inputRect{ dialogRect.x + 20.0f, dialogRect.y + 60.0f, dialogRect.w - 40.0f, 40.0f };
                         SDL_SetRenderDrawColor(renderer, 24, 28, 36, 255);
                         SDL_RenderFillRect(renderer, &inputRect);
                         SDL_SetRenderDrawColor(renderer, 80, 90, 110, 255);
                         SDL_RenderRect(renderer, &inputRect);
 
-                        // متن در حال تایپ به همراه نشانگر چشمک‌زن (Cursor)
                         std::string displayText = saveFileName;
                         if ((SDL_GetTicks() / 500) % 2 == 0) displayText += "_";
                         renderText(renderer, font, displayText, inputRect.x + 10.0f, inputRect.y + 8.0f, {200, 210, 230, 255}, false);
@@ -281,14 +403,7 @@ int main(int, char**) {
                 }
                 break;
 
-            case AppState::OpenProject:
-            case AppState::SelectPageSize:
-            case AppState::RecentProjects:
-                // چون این منوها داخل خود StartMenu رندر میشن این حالت‌ها رو خالی گذاشتیم
-                break;
-
-            case AppState::Exit:
-                running = false;
+            default:
                 break;
         }
 
