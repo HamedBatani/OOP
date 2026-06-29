@@ -1,8 +1,11 @@
-//canvasRenderer.cpp
+// src/CanvasRenderer.cpp
 #include "CanvasRenderer.h"
-
+#include <SDL3/SDL.h>
+#include <SDL3_ttf/SDL_ttf.h>
 #include <iomanip>
 #include <ostream>
+#include <string>
+#include <cmath>
 
 namespace {
     void printPoint(std::ostream& output, const Point& point) {
@@ -42,13 +45,8 @@ void CanvasRenderer::renderState(std::ostream& output) const {
 }
 
 void CanvasRenderer::renderGridPreview(std::ostream& output, int columns, int rows) const {
-    if (columns < 3) {
-        columns = 3;
-    }
-
-    if (rows < 3) {
-        rows = 3;
-    }
+    if (columns < 3) columns = 3;
+    if (rows < 3) rows = 3;
 
     const int centerColumn = columns / 2;
     const int centerRow = rows / 2;
@@ -63,21 +61,14 @@ void CanvasRenderer::renderGridPreview(std::ostream& output, int columns, int ro
 
     for (int row = 0; row < rows; ++row) {
         for (int column = 0; column < columns; ++column) {
-            if (row == centerRow && column == centerColumn) {
-                output << '+';
-            } else if (row == centerRow) {
-                output << '-';
-            } else if (column == centerColumn) {
-                output << '|';
-            } else if (row % 2 == 0 && column % 4 == 0) {
-                output << '.';
-            } else {
-                output << ' ';
-            }
+            if (row == centerRow && column == centerColumn) output << '+';
+            else if (row == centerRow) output << '-';
+            else if (column == centerColumn) output << '|';
+            else if (row % 2 == 0 && column % 4 == 0) output << '.';
+            else output << ' ';
         }
         output << '\n';
     }
-
     output << "Each dot represents a visible grid intersection.\n";
 }
 
@@ -102,39 +93,34 @@ void CanvasRenderer::renderSnapTest(std::ostream& output, const Point& rawMouseS
     output << '\n';
     output << "Grid Spacing: " << canvas_.grid().spacing() << '\n';
 }
-// پیاده‌سازی متد renderSDL در انتهای فایل CanvasRenderer.cpp
 
+// متد گرافیکی SDL برای بوم طراحی
 void CanvasRenderer::renderSDL(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int windowHeight) const {
     if (!renderer) return;
 
-    // ۱. رسم پس‌زمینه بوم (رنگ خاکستری تیره مایل به آبی)
-    SDL_SetRenderDrawColor(renderer, 30, 35, 45, 255);
+    // ۱. پس‌زمینه بوم: رنگ کرم/خاکستری روشن (دقیقاً مشابه استایل کلاسیک Proteus)
+    SDL_SetRenderDrawColor(renderer, 236, 240, 235, 255);
     SDL_RenderClear(renderer);
 
-    // ۲. رسم خطوط شطرنجی (Grid Lines) در صورت فعال بودن
+    // ۲. رسم خطوط شطرنجی با رنگ مهندسی
     if (canvas_.grid().isVisible()) {
-        SDL_SetRenderDrawColor(renderer, 50, 58, 75, 255); // رنگ خطوط شطرنجی
+        SDL_SetRenderDrawColor(renderer, 205, 210, 205, 255); // خاکستری ملایم برای گرید
 
         float spacing = canvas_.grid().spacing();
-
-        // پیدا کردن گوشه‌های صفحه در فضای جهانی (World Space)
         Point topLeftWorld = canvas_.screenToWorld({0.0f, 0.0f});
         Point bottomRightWorld = canvas_.screenToWorld({static_cast<float>(windowWidth), static_cast<float>(windowHeight)});
 
-        // رند کردن موقعیت‌ها برای هم‌ترازی با شبکه‌بندی
         float startX = std::floor(topLeftWorld.x / spacing) * spacing;
         float endX = std::ceil(bottomRightWorld.x / spacing) * spacing;
         float startY = std::floor(topLeftWorld.y / spacing) * spacing;
         float endY = std::ceil(bottomRightWorld.y / spacing) * spacing;
 
-        // رسم خطوط عمودی
         for (float x = startX; x <= endX; x += spacing) {
             Point p1 = canvas_.worldToScreen({x, topLeftWorld.y});
             Point p2 = canvas_.worldToScreen({x, bottomRightWorld.y});
             SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
         }
 
-        // رسم خطوط افقی
         for (float y = startY; y <= endY; y += spacing) {
             Point p1 = canvas_.worldToScreen({topLeftWorld.x, y});
             Point p2 = canvas_.worldToScreen({bottomRightWorld.x, y});
@@ -142,15 +128,15 @@ void CanvasRenderer::renderSDL(SDL_Renderer* renderer, TTF_Font* font, int windo
         }
     }
 
-    // ۳. رندر متون راهنما و مختصات لحظه‌ای (Real-time Coordinates)
+    // ۳. متون راهنما با رنگ تیره برای خوانایی روی بوم روشن
     if (font) {
-        SDL_Color infoColor{170, 180, 200, 255};
+        SDL_Color infoColor{60, 65, 75, 255}; // خاکستری تیره
 
         Point mouseWorld = canvas_.mouseWorldPosition();
         std::string coordText = "X: " + std::to_string(static_cast<int>(mouseWorld.x)) +
                                 " , Y: " + std::to_string(static_cast<int>(mouseWorld.y));
         std::string zoomText = "Zoom: " + std::to_string(static_cast<int>(canvas_.zoom() * 100)) + "%";
-        std::string hintText = "Hold Middle Mouse to Pan / Scroll to Zoom";
+        std::string hintText = "Middle Mouse: Pan | Scroll: Zoom";
 
         auto drawLocalText = [&](const std::string& text, float x, float y) {
             SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), text.size(), infoColor);

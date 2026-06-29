@@ -5,6 +5,7 @@
 #include <cmath>
 
 namespace {
+    // تعریف دقیق عدد پی برای جلوگیری از ارورهای کامپایلر
     constexpr float PI = 3.14159265358979323846f;
 }
 
@@ -32,6 +33,19 @@ void ComponentLibrary::handleEvent(const SDL_Event& event, std::string& selected
         hoverY_ = event.motion.y;
     }
 
+    float mx = hoverX_;
+    float my = hoverY_;
+
+    // اسکرول با موس
+    if (event.type == SDL_EVENT_MOUSE_WHEEL) {
+        if (mx >= x_ && mx <= x_ + width_ && my >= y_ + 40.0f && my <= y_ + height_ - 150.0f) {
+            scrollY_ -= event.wheel.y * 30.0f;
+            if (scrollY_ < 0.0f) scrollY_ = 0.0f;
+            if (scrollY_ > maxScrollY_) scrollY_ = maxScrollY_;
+            return;
+        }
+    }
+
     if (isSearchFocused_) {
         if (event.type == SDL_EVENT_TEXT_INPUT) {
             searchQuery_ += event.text.text;
@@ -50,9 +64,6 @@ void ComponentLibrary::handleEvent(const SDL_Event& event, std::string& selected
 
         if (!isLeftClick && !isRightClick) return;
 
-        float mx = event.button.x;
-        float my = event.button.y;
-
         if (mx < x_ || mx > x_ + width_ || my < y_ || my > y_ + height_ - 150.0f) {
             if (isLeftClick && !(mx >= x_ && mx <= x_ + width_ && my >= y_ && my <= y_ + height_)) {
                 isSearchFocused_ = false;
@@ -61,7 +72,7 @@ void ComponentLibrary::handleEvent(const SDL_Event& event, std::string& selected
         }
 
         if (isLeftClick) {
-            SDL_FRect searchRect{x_ + 5.0f, y_ + 5.0f, width_ - 10.0f, 30.0f};
+            SDL_FRect searchRect{x_ + 10.0f, y_ + 10.0f, width_ - 20.0f, 30.0f};
             if (mx >= searchRect.x && mx <= searchRect.x + searchRect.w &&
                 my >= searchRect.y && my <= searchRect.y + searchRect.h) {
                 isSearchFocused_ = true;
@@ -71,17 +82,18 @@ void ComponentLibrary::handleEvent(const SDL_Event& event, std::string& selected
             }
         }
 
-        float activeY = y_ + 70.0f;
+        if (my < y_ + 50.0f) return;
+
+        float activeY = y_ + 80.0f - scrollY_;
         if (activeList_.empty()) {
             activeY += 25.0f;
         } else {
             for (size_t i = 0; i < activeList_.size(); ++i) {
-                SDL_FRect itemRect{x_ + 10.0f, activeY, width_ - 20.0f, 25.0f};
+                SDL_FRect itemRect{x_ + 5.0f, activeY, width_ - 10.0f, 28.0f};
                 if (mx >= itemRect.x && mx <= itemRect.x + itemRect.w &&
                     my >= itemRect.y && my <= itemRect.y + itemRect.h) {
                     if (isLeftClick) {
-                        // بررسی کلیک روی علامت X در سمت راست یا دبل-کلیک
-                        if (mx >= itemRect.x + itemRect.w - 25.0f || event.button.clicks >= 2) {
+                        if (mx >= itemRect.x + itemRect.w - 20.0f || event.button.clicks >= 2) {
                             activeList_.erase(activeList_.begin() + i);
                         } else {
                             selectedComponent = activeList_[i];
@@ -93,9 +105,10 @@ void ComponentLibrary::handleEvent(const SDL_Event& event, std::string& selected
                 }
                 activeY += 30.0f;
             }
+            activeY += 10.0f;
         }
 
-        float currentY = activeY + 30.0f;
+        float currentY = activeY + 25.0f;
 
         for (auto& cat : categories_) {
             bool catMatch = containsIgnoreCase(cat.name, searchQuery_);
@@ -109,24 +122,23 @@ void ComponentLibrary::handleEvent(const SDL_Event& event, std::string& selected
 
             if (!searchQuery_.empty() && !catMatch && matchingItems.empty()) continue;
 
-            SDL_FRect catRect{x_ + 5.0f, currentY, width_ - 10.0f, 30.0f};
+            SDL_FRect catRect{x_ + 5.0f, currentY, width_ - 10.0f, 28.0f};
             if (mx >= catRect.x && mx <= catRect.x + catRect.w &&
                 my >= catRect.y && my <= catRect.y + catRect.h) {
                 if (isLeftClick) cat.isExpanded = !cat.isExpanded;
                 return;
             }
-            currentY += 35.0f;
+            currentY += 30.0f;
 
             bool shouldExpand = cat.isExpanded || (!searchQuery_.empty() && !matchingItems.empty());
 
             if (shouldExpand) {
                 for (const auto& item : matchingItems) {
-                    SDL_FRect itemRect{x_ + 20.0f, currentY, width_ - 30.0f, 25.0f};
+                    SDL_FRect itemRect{x_ + 15.0f, currentY, width_ - 20.0f, 26.0f};
                     if (mx >= itemRect.x && mx <= itemRect.x + itemRect.w &&
                         my >= itemRect.y && my <= itemRect.y + itemRect.h) {
                         if (isLeftClick) {
-                            // بررسی کلیک روی علامت + در سمت راست یا دبل-کلیک
-                            if (mx >= itemRect.x + itemRect.w - 25.0f || event.button.clicks >= 2) {
+                            if (mx >= itemRect.x + itemRect.w - 20.0f || event.button.clicks >= 2) {
                                 if (std::find(activeList_.begin(), activeList_.end(), item) == activeList_.end()) {
                                     activeList_.push_back(item);
                                 }
@@ -140,7 +152,7 @@ void ComponentLibrary::handleEvent(const SDL_Event& event, std::string& selected
                         }
                         return;
                     }
-                    currentY += 30.0f;
+                    currentY += 28.0f;
                 }
             }
         }
@@ -150,85 +162,87 @@ void ComponentLibrary::handleEvent(const SDL_Event& event, std::string& selected
 void ComponentLibrary::render(SDL_Renderer* renderer, TTF_Font* font, const std::string& selectedComponent) const {
     if (!renderer) return;
 
-    SDL_SetRenderDrawColor(renderer, 30, 36, 48, 255);
+    // پس‌زمینه پنل کناری تاریک
+    SDL_SetRenderDrawColor(renderer, 40, 45, 55, 255);
     SDL_FRect bgRect{x_, y_, width_, height_};
     SDL_RenderFillRect(renderer, &bgRect);
 
+    // خط حاشیه جداکننده
+    SDL_SetRenderDrawColor(renderer, 25, 30, 40, 255);
+    SDL_RenderLine(renderer, x_ + width_ - 1.0f, y_, x_ + width_ - 1.0f, y_ + height_);
+
     if (!font) return;
 
-    SDL_FRect searchRect{x_ + 5.0f, y_ + 5.0f, width_ - 10.0f, 30.0f};
+    // نوار جستجو
+    SDL_FRect searchRect{x_ + 10.0f, y_ + 10.0f, width_ - 20.0f, 30.0f};
     if (isSearchFocused_) {
-        SDL_SetRenderDrawColor(renderer, 66, 153, 225, 255);
+        SDL_SetRenderDrawColor(renderer, 0, 120, 215, 255);
         SDL_RenderRect(renderer, &searchRect);
-        SDL_SetRenderDrawColor(renderer, 45, 55, 75, 255);
+        SDL_SetRenderDrawColor(renderer, 50, 55, 65, 255);
     } else {
-        SDL_SetRenderDrawColor(renderer, 40, 48, 65, 255);
+        SDL_SetRenderDrawColor(renderer, 30, 35, 45, 255);
     }
     SDL_RenderFillRect(renderer, &searchRect);
 
     std::string displayText = searchQuery_.empty() ? "Search..." : searchQuery_;
-    SDL_Color searchTextColor = searchQuery_.empty() ? SDL_Color{120, 130, 150, 255} : SDL_Color{255, 255, 255, 255};
+    SDL_Color searchTextColor = searchQuery_.empty() ? SDL_Color{140, 150, 160, 255} : SDL_Color{255, 255, 255, 255};
     SDL_Surface* searchSurf = TTF_RenderText_Blended(font, displayText.c_str(), 0, searchTextColor);
     if (searchSurf) {
         SDL_Texture* searchTex = SDL_CreateTextureFromSurface(renderer, searchSurf);
-        SDL_FRect textRect{searchRect.x + 10.0f, searchRect.y + (30.0f - searchSurf->h) / 2.0f, static_cast<float>(searchSurf->w), static_cast<float>(searchSurf->h)};
+        SDL_FRect textRect{searchRect.x + 8.0f, searchRect.y + (30.0f - searchSurf->h) / 2.0f, static_cast<float>(searchSurf->w)*0.9f, static_cast<float>(searchSurf->h)*0.9f};
         SDL_RenderTexture(renderer, searchTex, nullptr, &textRect);
         SDL_DestroyTexture(searchTex);
         SDL_DestroySurface(searchSurf);
     }
 
-    SDL_Color headerColor{150, 160, 180, 255};
-    SDL_Surface* activeTitleSurf = TTF_RenderText_Blended(font, "Active List:", 0, headerColor);
-    if (activeTitleSurf) {
-        SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, activeTitleSurf);
-        SDL_FRect dest{x_ + 10.0f, y_ + 45.0f, static_cast<float>(activeTitleSurf->w)*0.8f, static_cast<float>(activeTitleSurf->h)*0.8f};
-        SDL_RenderTexture(renderer, tex, nullptr, &dest);
-        SDL_DestroyTexture(tex);
-        SDL_DestroySurface(activeTitleSurf);
-    }
+    float previewHeight = 160.0f;
+    SDL_Rect listClipRect{ static_cast<int>(x_), static_cast<int>(y_ + 50.0f), static_cast<int>(width_), static_cast<int>(height_ - previewHeight - 50.0f) };
+    SDL_SetRenderClipRect(renderer, &listClipRect);
 
-    float currentY = y_ + 70.0f;
+    SDL_Color headerColor{170, 180, 190, 255};
+    SDL_Color itemTextColor{210, 220, 230, 255};
+    SDL_Color selectedTextColor{255, 255, 255, 255};
 
-    if (activeList_.empty()) {
-        SDL_Color emptyColor{100, 110, 130, 255};
-        SDL_Surface* emptySurf = TTF_RenderText_Blended(font, "(Double-Click to add)", 0, emptyColor);
-        if (emptySurf) {
-            SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, emptySurf);
-            SDL_FRect dest{x_ + 15.0f, currentY, static_cast<float>(emptySurf->w)*0.7f, static_cast<float>(emptySurf->h)*0.7f};
+    float currentY = y_ + 55.0f - scrollY_;
+
+    // بخش لیست فعال (Active List)
+    if (!activeList_.empty()) {
+        SDL_Surface* activeTitleSurf = TTF_RenderText_Blended(font, "ACTIVE COMPONENTS", 0, headerColor);
+        if (activeTitleSurf) {
+            SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, activeTitleSurf);
+            SDL_FRect dest{x_ + 10.0f, currentY, static_cast<float>(activeTitleSurf->w)*0.75f, static_cast<float>(activeTitleSurf->h)*0.75f};
             SDL_RenderTexture(renderer, tex, nullptr, &dest);
             SDL_DestroyTexture(tex);
-            SDL_DestroySurface(emptySurf);
+            SDL_DestroySurface(activeTitleSurf);
         }
         currentY += 25.0f;
-    } else {
+
         for (const auto& item : activeList_) {
-            SDL_FRect itemRect{x_ + 10.0f, currentY, width_ - 20.0f, 25.0f};
-            bool isItemHovered = (hoverX_ >= itemRect.x && hoverX_ <= itemRect.x + itemRect.w &&
-                                  hoverY_ >= itemRect.y && hoverY_ <= itemRect.y + itemRect.h);
+            SDL_FRect itemRect{x_ + 5.0f, currentY, width_ - 10.0f, 28.0f};
+            bool isItemHovered = (hoverX_ >= itemRect.x && hoverX_ <= itemRect.x + itemRect.w && hoverY_ >= itemRect.y && hoverY_ <= itemRect.y + itemRect.h);
 
-            if (item == selectedComponent) SDL_SetRenderDrawColor(renderer, 40, 100, 160, 255);
-            else if (isItemHovered) SDL_SetRenderDrawColor(renderer, 80, 70, 90, 255);
-            else SDL_SetRenderDrawColor(renderer, 45, 50, 65, 255);
+            if (item == selectedComponent) {
+                SDL_SetRenderDrawColor(renderer, 0, 100, 180, 255);
+                SDL_RenderFillRect(renderer, &itemRect);
+            } else if (isItemHovered) {
+                SDL_SetRenderDrawColor(renderer, 60, 65, 75, 255);
+                SDL_RenderFillRect(renderer, &itemRect);
+            }
 
-            SDL_RenderFillRect(renderer, &itemRect);
-
-            SDL_Color itemTextColor{220, 230, 255, 255};
-            SDL_Surface* itemSurf = TTF_RenderText_Blended(font, item.c_str(), 0, itemTextColor);
+            SDL_Surface* itemSurf = TTF_RenderText_Blended(font, item.c_str(), 0, (item == selectedComponent) ? selectedTextColor : itemTextColor);
             if (itemSurf) {
                 SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, itemSurf);
-                SDL_FRect textRect{itemRect.x + 10.0f, itemRect.y + (25.0f - itemSurf->h)/2.0f, static_cast<float>(itemSurf->w), static_cast<float>(itemSurf->h)};
+                SDL_FRect textRect{itemRect.x + 10.0f, itemRect.y + (28.0f - itemSurf->h)/2.0f, static_cast<float>(itemSurf->w)*0.9f, static_cast<float>(itemSurf->h)*0.9f};
                 SDL_RenderTexture(renderer, tex, nullptr, &textRect);
                 SDL_DestroyTexture(tex);
                 SDL_DestroySurface(itemSurf);
             }
 
-            // رسم آیکون قرمز X در زمان هاور برای راهنمایی بصری حذف
             if (isItemHovered) {
-                SDL_Color xColor{255, 100, 100, 255};
-                SDL_Surface* xSurf = TTF_RenderText_Blended(font, "X", 0, xColor);
+                SDL_Surface* xSurf = TTF_RenderText_Blended(font, "X", 0, {255, 100, 100, 255});
                 if (xSurf) {
                     SDL_Texture* xTex = SDL_CreateTextureFromSurface(renderer, xSurf);
-                    SDL_FRect xRect{itemRect.x + itemRect.w - 18.0f, itemRect.y + (25.0f - xSurf->h)/2.0f, static_cast<float>(xSurf->w), static_cast<float>(xSurf->h)};
+                    SDL_FRect xRect{itemRect.x + itemRect.w - 20.0f, itemRect.y + (28.0f - xSurf->h)/2.0f, static_cast<float>(xSurf->w)*0.9f, static_cast<float>(xSurf->h)*0.9f};
                     SDL_RenderTexture(renderer, xTex, nullptr, &xRect);
                     SDL_DestroyTexture(xTex);
                     SDL_DestroySurface(xSurf);
@@ -236,138 +250,120 @@ void ComponentLibrary::render(SDL_Renderer* renderer, TTF_Font* font, const std:
             }
             currentY += 30.0f;
         }
+        currentY += 10.0f;
     }
 
-    currentY += 5.0f;
-    SDL_Surface* libTitleSurf = TTF_RenderText_Blended(font, "Library:", 0, headerColor);
+    // بخش کتابخانه اصلی (Library)
+    SDL_Surface* libTitleSurf = TTF_RenderText_Blended(font, "LIBRARIES", 0, headerColor);
     if (libTitleSurf) {
         SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, libTitleSurf);
-        SDL_FRect dest{x_ + 10.0f, currentY, static_cast<float>(libTitleSurf->w)*0.8f, static_cast<float>(libTitleSurf->h)*0.8f};
+        SDL_FRect dest{x_ + 10.0f, currentY, static_cast<float>(libTitleSurf->w)*0.75f, static_cast<float>(libTitleSurf->h)*0.75f};
         SDL_RenderTexture(renderer, tex, nullptr, &dest);
         SDL_DestroyTexture(tex);
         SDL_DestroySurface(libTitleSurf);
     }
     currentY += 25.0f;
 
-    float remainingHeight = (y_ + height_ - 150.0f) - currentY;
-    if (remainingHeight > 0) {
-        SDL_Rect listClipRect{ static_cast<int>(x_), static_cast<int>(currentY), static_cast<int>(width_), static_cast<int>(remainingHeight) };
-        SDL_SetRenderClipRect(renderer, &listClipRect);
-
-        int totalMatches = 0;
-
-        for (const auto& cat : categories_) {
-            bool catMatch = containsIgnoreCase(cat.name, searchQuery_);
-            std::vector<std::string> matchingItems;
-
-            for (const auto& item : cat.items) {
-                if (catMatch || containsIgnoreCase(item, searchQuery_)) {
-                    matchingItems.push_back(item);
-                }
-            }
-
-            if (!searchQuery_.empty() && !catMatch && matchingItems.empty()) continue;
-
-            totalMatches++;
-
-            SDL_FRect catRect{x_ + 5.0f, currentY, width_ - 10.0f, 30.0f};
-            bool isCatHovered = (hoverX_ >= catRect.x && hoverX_ <= catRect.x + catRect.w &&
-                                 hoverY_ >= catRect.y && hoverY_ <= catRect.y + catRect.h);
-
-            if (isCatHovered) SDL_SetRenderDrawColor(renderer, 70, 85, 110, 255);
-            else SDL_SetRenderDrawColor(renderer, 45, 55, 75, 255);
-
-            SDL_RenderFillRect(renderer, &catRect);
-
-            bool isExpanded = cat.isExpanded || (!searchQuery_.empty() && !matchingItems.empty());
-            std::string prefix = isExpanded ? "v  " : ">  ";
-            SDL_Color catTextColor{240, 245, 255, 255};
-
-            SDL_Surface* catSurf = TTF_RenderText_Blended(font, (prefix + cat.name).c_str(), 0, catTextColor);
-            if (catSurf) {
-                SDL_Texture* catTex = SDL_CreateTextureFromSurface(renderer, catSurf);
-                SDL_FRect textRect{catRect.x + 10.0f, catRect.y + (30.0f - catSurf->h) / 2.0f, static_cast<float>(catSurf->w), static_cast<float>(catSurf->h)};
-                SDL_RenderTexture(renderer, catTex, nullptr, &textRect);
-                SDL_DestroyTexture(catTex);
-                SDL_DestroySurface(catSurf);
-            }
-
-            currentY += 35.0f;
-
-            if (isExpanded) {
-                for (const auto& item : matchingItems) {
-                    totalMatches++;
-                    SDL_FRect itemRect{x_ + 20.0f, currentY, width_ - 30.0f, 25.0f};
-                    bool isItemHovered = (hoverX_ >= itemRect.x && hoverX_ <= itemRect.x + itemRect.w &&
-                                          hoverY_ >= itemRect.y && hoverY_ <= itemRect.y + itemRect.h);
-
-                    if (item == selectedComponent) {
-                        SDL_SetRenderDrawColor(renderer, 40, 100, 160, 255);
-                    } else if (isItemHovered) {
-                        SDL_SetRenderDrawColor(renderer, 60, 120, 180, 255);
-                    } else {
-                        SDL_SetRenderDrawColor(renderer, 38, 45, 60, 255);
-                    }
-
-                    SDL_RenderFillRect(renderer, &itemRect);
-
-                    SDL_Color itemTextColor{180, 190, 210, 255};
-                    SDL_Surface* itemSurf = TTF_RenderText_Blended(font, item.c_str(), 0, itemTextColor);
-                    if (itemSurf) {
-                        SDL_Texture* itemTex = SDL_CreateTextureFromSurface(renderer, itemSurf);
-                        SDL_FRect textRect{itemRect.x + 10.0f, itemRect.y + (25.0f - itemSurf->h) / 2.0f, static_cast<float>(itemSurf->w), static_cast<float>(itemSurf->h)};
-                        SDL_RenderTexture(renderer, itemTex, nullptr, &textRect);
-                        SDL_DestroyTexture(itemTex);
-                        SDL_DestroySurface(itemSurf);
-                    }
-
-                    // رسم آیکون سبز + در زمان هاور برای راهنمایی افزودن قطعه
-                    if (isItemHovered) {
-                        SDL_Color plusColor{100, 255, 100, 255};
-                        SDL_Surface* plusSurf = TTF_RenderText_Blended(font, "+", 0, plusColor);
-                        if (plusSurf) {
-                            SDL_Texture* plusTex = SDL_CreateTextureFromSurface(renderer, plusSurf);
-                            SDL_FRect plusRect{itemRect.x + itemRect.w - 18.0f, itemRect.y + (25.0f - plusSurf->h)/2.0f, static_cast<float>(plusSurf->w), static_cast<float>(plusSurf->h)};
-                            SDL_RenderTexture(renderer, plusTex, nullptr, &plusRect);
-                            SDL_DestroyTexture(plusTex);
-                            SDL_DestroySurface(plusSurf);
-                        }
-                    }
-                    currentY += 30.0f;
-                }
-            }
+    for (const auto& cat : categories_) {
+        bool catMatch = containsIgnoreCase(cat.name, searchQuery_);
+        std::vector<std::string> matchingItems;
+        for (const auto& item : cat.items) {
+            if (catMatch || containsIgnoreCase(item, searchQuery_)) matchingItems.push_back(item);
         }
+        if (!searchQuery_.empty() && !catMatch && matchingItems.empty()) continue;
 
-        if (totalMatches == 0 && !searchQuery_.empty()) {
-            SDL_Color errorColor{255, 100, 100, 255};
-            SDL_Surface* errorSurf = TTF_RenderText_Blended(font, "No component!", 0, errorColor);
-            if (errorSurf) {
-                SDL_Texture* errorTex = SDL_CreateTextureFromSurface(renderer, errorSurf);
-                SDL_FRect textRect{x_ + 10.0f, currentY + 10.0f, static_cast<float>(errorSurf->w), static_cast<float>(errorSurf->h)};
-                SDL_RenderTexture(renderer, errorTex, nullptr, &textRect);
-                SDL_DestroyTexture(errorTex);
-                SDL_DestroySurface(errorSurf);
+        SDL_FRect catRect{x_ + 5.0f, currentY, width_ - 10.0f, 28.0f};
+        bool isCatHovered = (hoverX_ >= catRect.x && hoverX_ <= catRect.x + catRect.w && hoverY_ >= catRect.y && hoverY_ <= catRect.y + catRect.h);
+
+        if (isCatHovered) SDL_SetRenderDrawColor(renderer, 55, 60, 70, 255);
+        else SDL_SetRenderDrawColor(renderer, 45, 50, 60, 255);
+        SDL_RenderFillRect(renderer, &catRect);
+
+        bool isExpanded = cat.isExpanded || (!searchQuery_.empty() && !matchingItems.empty());
+        std::string prefix = isExpanded ? "-  " : "+  ";
+
+        SDL_Surface* catSurf = TTF_RenderText_Blended(font, (prefix + cat.name).c_str(), 0, {240, 240, 240, 255});
+        if (catSurf) {
+            SDL_Texture* catTex = SDL_CreateTextureFromSurface(renderer, catSurf);
+            SDL_FRect textRect{catRect.x + 8.0f, catRect.y + (28.0f - catSurf->h) / 2.0f, static_cast<float>(catSurf->w)*0.9f, static_cast<float>(catSurf->h)*0.9f};
+            SDL_RenderTexture(renderer, catTex, nullptr, &textRect);
+            SDL_DestroyTexture(catTex);
+            SDL_DestroySurface(catSurf);
+        }
+        currentY += 30.0f;
+
+        if (isExpanded) {
+            for (const auto& item : matchingItems) {
+                SDL_FRect itemRect{x_ + 15.0f, currentY, width_ - 20.0f, 26.0f};
+                bool isItemHovered = (hoverX_ >= itemRect.x && hoverX_ <= itemRect.x + itemRect.w && hoverY_ >= itemRect.y && hoverY_ <= itemRect.y + itemRect.h);
+
+                if (item == selectedComponent) {
+                    SDL_SetRenderDrawColor(renderer, 0, 100, 180, 255);
+                    SDL_RenderFillRect(renderer, &itemRect);
+                } else if (isItemHovered) {
+                    SDL_SetRenderDrawColor(renderer, 60, 65, 75, 255);
+                    SDL_RenderFillRect(renderer, &itemRect);
+                }
+
+                SDL_Surface* itemSurf = TTF_RenderText_Blended(font, item.c_str(), 0, (item == selectedComponent) ? selectedTextColor : itemTextColor);
+                if (itemSurf) {
+                    SDL_Texture* itemTex = SDL_CreateTextureFromSurface(renderer, itemSurf);
+                    SDL_FRect textRect{itemRect.x + 10.0f, itemRect.y + (26.0f - itemSurf->h) / 2.0f, static_cast<float>(itemSurf->w)*0.85f, static_cast<float>(itemSurf->h)*0.85f};
+                    SDL_RenderTexture(renderer, itemTex, nullptr, &textRect);
+                    SDL_DestroyTexture(itemTex);
+                    SDL_DestroySurface(itemSurf);
+                }
+
+                if (isItemHovered) {
+                    SDL_Surface* plusSurf = TTF_RenderText_Blended(font, "+", 0, {100, 255, 100, 255});
+                    if (plusSurf) {
+                        SDL_Texture* plusTex = SDL_CreateTextureFromSurface(renderer, plusSurf);
+                        SDL_FRect plusRect{itemRect.x + itemRect.w - 20.0f, itemRect.y + (26.0f - plusSurf->h)/2.0f, static_cast<float>(plusSurf->w)*0.9f, static_cast<float>(plusSurf->h)*0.9f};
+                        SDL_RenderTexture(renderer, plusTex, nullptr, &plusRect);
+                        SDL_DestroyTexture(plusTex);
+                        SDL_DestroySurface(plusSurf);
+                    }
+                }
+                currentY += 28.0f;
             }
         }
     }
 
     SDL_SetRenderClipRect(renderer, nullptr);
+
+    // اسکرول‌بار
+    float visibleHeight = height_ - previewHeight - 50.0f;
+    float contentHeight = (currentY + scrollY_) - (y_ + 50.0f);
+    maxScrollY_ = std::max(0.0f, contentHeight - visibleHeight);
+    if (scrollY_ > maxScrollY_) scrollY_ = maxScrollY_;
+
+    if (maxScrollY_ > 0) {
+        float scrollbarHeight = std::max(20.0f, (visibleHeight / contentHeight) * visibleHeight);
+        float scrollbarY = y_ + 50.0f + (scrollY_ / maxScrollY_) * (visibleHeight - scrollbarHeight);
+        SDL_FRect scrollbar{x_ + width_ - 6.0f, scrollbarY, 4.0f, scrollbarHeight};
+        SDL_SetRenderDrawColor(renderer, 100, 110, 120, 200);
+        SDL_RenderFillRect(renderer, &scrollbar);
+    }
+
     renderPreviewBox(renderer, font, selectedComponent);
 }
 
 void ComponentLibrary::renderPreviewBox(SDL_Renderer* renderer, TTF_Font* font, const std::string& compName) const {
-    SDL_FRect previewBg{x_, y_ + height_ - 150.0f, width_, 150.0f};
-    SDL_SetRenderDrawColor(renderer, 24, 28, 36, 255);
+    float previewHeight = 160.0f;
+    SDL_FRect previewBg{x_, y_ + height_ - previewHeight, width_, previewHeight};
+
+    // پس‌زمینه پیش‌نمایش به رنگ بوم اصلی (کرم/خاکستری روشن)
+    SDL_SetRenderDrawColor(renderer, 236, 240, 235, 255);
     SDL_RenderFillRect(renderer, &previewBg);
 
-    SDL_SetRenderDrawColor(renderer, 80, 90, 110, 255);
-    SDL_RenderLine(renderer, x_, y_ + height_ - 150.0f, x_ + width_, y_ + height_ - 150.0f);
+    SDL_SetRenderDrawColor(renderer, 20, 25, 35, 255);
+    SDL_RenderLine(renderer, x_, previewBg.y, x_ + width_, previewBg.y);
 
-    SDL_Color titleColor{150, 160, 180, 255};
-    SDL_Surface* titleSurf = TTF_RenderText_Blended(font, "Preview:", 0, titleColor);
+    SDL_Color titleColor{100, 110, 120, 255};
+    SDL_Surface* titleSurf = TTF_RenderText_Blended(font, "SCHEMATIC PREVIEW", 0, titleColor);
     if (titleSurf) {
         SDL_Texture* titleTex = SDL_CreateTextureFromSurface(renderer, titleSurf);
-        SDL_FRect textRect{x_ + 10.0f, previewBg.y + 10.0f, static_cast<float>(titleSurf->w)*0.8f, static_cast<float>(titleSurf->h)*0.8f};
+        SDL_FRect textRect{x_ + 10.0f, previewBg.y + 8.0f, static_cast<float>(titleSurf->w)*0.7f, static_cast<float>(titleSurf->h)*0.7f};
         SDL_RenderTexture(renderer, titleTex, nullptr, &textRect);
         SDL_DestroyTexture(titleTex);
         SDL_DestroySurface(titleSurf);
@@ -376,9 +372,10 @@ void ComponentLibrary::renderPreviewBox(SDL_Renderer* renderer, TTF_Font* font, 
     if (compName == "None" || compName.empty()) return;
 
     float cx = x_ + width_ / 2.0f;
-    float cy = previewBg.y + 85.0f;
+    float cy = previewBg.y + 90.0f;
 
-    SDL_SetRenderDrawColor(renderer, 220, 80, 80, 255);
+    // رنگ قرمز شماتیک‌های کلاسیک
+    SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
 
     auto drawCircle = [&](float x, float y, float r) {
         const int segments = 24;
@@ -443,9 +440,7 @@ void ComponentLibrary::renderPreviewBox(SDL_Renderer* renderer, TTF_Font* font, 
         SDL_RenderLine(renderer, cx - 15, cy + 20, cx, cy + 20);
         float step = PI / 12.0f;
         for(int j = -6; j < 6; ++j) {
-            SDL_RenderLine(renderer,
-                           cx + 20 * std::cos(j * step), cy + 20 * std::sin(j * step),
-                           cx + 20 * std::cos((j+1) * step), cy + 20 * std::sin((j+1) * step));
+            SDL_RenderLine(renderer, cx + 20 * std::cos(j * step), cy + 20 * std::sin(j * step), cx + 20 * std::cos((j+1) * step), cy + 20 * std::sin((j+1) * step));
         }
     }
     else if (compName == "OR Gate") {

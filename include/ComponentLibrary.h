@@ -13,6 +13,10 @@ public:
     void handleEvent(const SDL_Event& event, std::string& selectedComponent);
     void render(SDL_Renderer* renderer, TTF_Font* font, const std::string& selectedComponent) const;
 
+    // دو تابع جدید برای ارسال و دریافت لیست قطعات جهت ذخیره/بازیابی
+    const std::vector<std::string>& getActiveList() const { return activeList_; }
+    void setActiveList(const std::vector<std::string>& list) { activeList_ = list; }
+
 private:
     struct Category {
         std::string name;
@@ -30,6 +34,9 @@ private:
 
     std::string searchQuery_{""};
     bool isSearchFocused_{false};
+
+    mutable float scrollY_{0.0f};
+    mutable float maxScrollY_{0.0f};
 
     static bool containsIgnoreCase(const std::string& text, const std::string& query);
     void renderPreviewBox(SDL_Renderer* renderer, TTF_Font* font, const std::string& compName) const;
