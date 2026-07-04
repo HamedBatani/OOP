@@ -213,6 +213,9 @@ OOP_IS_TOP_LEVEL:STATIC=ON
 //Value Computed by CMake
 OOP_SOURCE_DIR:STATIC=C:/Users/bilgi/CLionProjects/OOP
 
+//The directory containing a CMake configuration file for SDL3.
+SDL3_DIR:PATH=SDL3_DIR-NOTFOUND
+
 
 ########################
 # INTERNAL cache entries

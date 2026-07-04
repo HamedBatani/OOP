@@ -3,13 +3,15 @@
 
 #include <string>
 #include <vector>
+#include <utility>
 #include <SDL3/SDL.h>
 #include "Point.h"
 
 struct ComponentPin {
-    std::string designation;   // e.g., "1", "2", "In+", "Out", "GND"
-    Point localOffset;         // Original relative offset from the component center point
-    Point calculatedWorldPos;   // Actual absolute coordinate inside World Space
+    std::string designation;
+    Point localOffset;
+    Point calculatedWorldPos;
+    bool isHighlighted{false}; // <--- متغیر جدید برای تشخیص هاور شدن پین
 };
 
 class ComponentInstance {
@@ -20,9 +22,9 @@ public:
 
     Point worldPos;
     Point dragStartPos{0.0f, 0.0f};
-    int rotationDegrees{0};    // Increments of 0, 90, 180, 270
-    bool isMirroredH{false};   // Horizontal mirror flip flag
-    bool isMirroredV{false};   // Vertical mirror flip flag
+    int rotationDegrees{0};
+    bool isMirroredH{false};
+    bool isMirroredV{false};
     bool isSelected{false};
 
     float worldWidth{64.0f};
@@ -32,7 +34,6 @@ public:
     ComponentInstance(std::string typeName, std::string id, std::string val, Point worldLocation)
             : type(std::move(typeName)), labelId(std::move(id)), valueStr(std::move(val)), worldPos(worldLocation) {
 
-        // Setup base bounding boxes scaled to component category type
         if (type == "Flip-Flop" || type == "Oscilloscope") {
             worldWidth = 80.0f; worldHeight = 60.0f;
         } else if (type == "Op-Amp" || type == "AND Gate" || type == "OR Gate") {
@@ -49,7 +50,6 @@ public:
         updatePinPositions();
     }
 
-    // Instantiates blueprint terminal pin layouts for the schematic router
     void initializeBasePins() {
         pins.clear();
         if (type == "Resistor" || type == "Capacitor" || type == "Inductor" || type == "Diode") {
@@ -79,17 +79,14 @@ public:
         }
     }
 
-    // Dynamic rotation matrix and mirror mapping arithmetic solver
     void updatePinPositions() {
         for (auto& pin : pins) {
             float lx = pin.localOffset.x;
             float ly = pin.localOffset.y;
 
-            // 1. Compute Mirroring Inversions
             if (isMirroredH) lx = -lx;
             if (isMirroredV) ly = -ly;
 
-            // 2. Compute Trig Rotation Transformations
             float rx = lx;
             float ry = ly;
             if (rotationDegrees == 90) {
@@ -99,9 +96,18 @@ public:
             } else if (rotationDegrees == 270) {
                 rx = ly; ry = -lx;
             }
-
-            // 3. Save absolute world coordinates out to map references
             pin.calculatedWorldPos = { worldPos.x + rx, worldPos.y + ry };
+        }
+    }
+
+    // تابع اصلی برای بررسی اینکه آیا موس روی پین قرار دارد یا خیر
+    void checkPinHover(const Point& mouseWorldPos, float sensitivityRadius = 8.0f) {
+        for (auto& pin : pins) {
+            if (pin.calculatedWorldPos.distanceTo(mouseWorldPos) <= sensitivityRadius) {
+                pin.isHighlighted = true;
+            } else {
+                pin.isHighlighted = false;
+            }
         }
     }
 

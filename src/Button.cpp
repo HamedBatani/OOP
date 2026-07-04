@@ -1,70 +1,164 @@
-//BUTTON.CPP
+// src/Button.cpp
 #include "Button.h"
-
-
 #include <utility>
+#include <vector>
+#include <cmath>
 
-Button::Button(const SDL_FRect& rect,
-               std::string label,
-               SDL_Color normalColor,
-               SDL_Color hoverColor,
-               SDL_Color textColor)
-        : rect_(rect),
-          label_(std::move(label)),
-          normalColor_(normalColor),
-          hoverColor_(hoverColor),
-          textColor_(textColor),
-          hovered_(false) {}
-
-void Button::setHovered(bool hovered) {
-    hovered_ = hovered;
+namespace {
+    constexpr float PI = 3.14159265358979323846f;
 }
 
+Button::Button(const SDL_FRect& rect, std::string label, SDL_Color normalColor, SDL_Color hoverColor, SDL_Color textColor, IconType icon)
+        : rect_(rect), label_(std::move(label)), normalColor_(normalColor),
+          hoverColor_(hoverColor), textColor_(textColor), hovered_(false), icon_(icon) {}
+
+void Button::setHovered(bool hovered) { hovered_ = hovered; }
+
 bool Button::contains(float mouseX, float mouseY) const {
-    return mouseX >= rect_.x &&
-           mouseX <= rect_.x + rect_.w &&
-           mouseY >= rect_.y &&
-           mouseY <= rect_.y + rect_.h;
+    return mouseX >= rect_.x && mouseX <= rect_.x + rect_.w && mouseY >= rect_.y && mouseY <= rect_.y + rect_.h;
+}
+
+void Button::fillRoundedRect(SDL_Renderer* renderer, const SDL_FRect& rect, float radius, SDL_Color color) const {
+    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
+    SDL_FRect r1{rect.x + radius, rect.y, rect.w - 2 * radius, rect.h};
+    SDL_FRect r2{rect.x, rect.y + radius, radius, rect.h - 2 * radius};
+    SDL_FRect r3{rect.x + rect.w - radius, rect.y + radius, radius, rect.h - 2 * radius};
+    SDL_RenderFillRect(renderer, &r1); SDL_RenderFillRect(renderer, &r2); SDL_RenderFillRect(renderer, &r3);
+
+    auto fillQuadrant = [&](float cx, float cy, float startAngle) {
+        const int segments = 8; std::vector<SDL_Vertex> v;
+        SDL_FColor fc{color.r / 255.f, color.g / 255.f, color.b / 255.f, color.a / 255.f};
+        float step = (PI / 2.0f) / segments;
+        for (int i = 0; i < segments; ++i) {
+            v.push_back({{cx, cy}, fc, {0, 0}});
+            v.push_back({{cx + radius * std::cos(startAngle + i * step), cy + radius * std::sin(startAngle + i * step)}, fc, {0, 0}});
+            v.push_back({{cx + radius * std::cos(startAngle + (i + 1) * step), cy + radius * std::sin(startAngle + (i + 1) * step)}, fc, {0, 0}});
+        }
+        SDL_RenderGeometry(renderer, nullptr, v.data(), v.size(), nullptr, 0);
+    };
+
+    fillQuadrant(rect.x + rect.w - radius, rect.y + rect.h - radius, 0.0f);
+    fillQuadrant(rect.x + radius, rect.y + rect.h - radius, PI / 2.0f);
+    fillQuadrant(rect.x + radius, rect.y + radius, PI);
+    fillQuadrant(rect.x + rect.w - radius, rect.y + radius, -PI / 2.0f);
+}
+
+void Button::drawVectorIcon(SDL_Renderer* renderer, float x, float y, float size) const {
+    SDL_SetRenderDrawColor(renderer, textColor_.r, textColor_.g, textColor_.b, textColor_.a);
+    float cx = x + size / 2.0f, cy = y + size / 2.0f, s = size * 0.8f;
+
+    auto drawCircle = [&](float cx, float cy, float r) {
+        for(int i=0; i<24; ++i) SDL_RenderLine(renderer, cx+r*std::cos(i*PI/12.f), cy+r*std::sin(i*PI/12.f), cx+r*std::cos((i+1)*PI/12.f), cy+r*std::sin((i+1)*PI/12.f));
+    };
+
+    if (icon_ == IconType::Save) {
+        SDL_FRect body{cx - s/2, cy - s/2, s, s}; SDL_RenderRect(renderer, &body);
+        SDL_FRect label{cx - s/3, cy - s/2, s*0.66f, s*0.3f}; SDL_RenderRect(renderer, &label);
+    }
+    else if (icon_ == IconType::Open || icon_ == IconType::Folder) {
+        SDL_RenderLine(renderer, cx-s/2, cy-s/4, cx-s/4, cy-s/4); SDL_RenderLine(renderer, cx-s/4, cy-s/4, cx-s/8, cy-s/8);
+        SDL_RenderLine(renderer, cx-s/8, cy-s/8, cx+s/2, cy-s/8); SDL_RenderLine(renderer, cx+s/2, cy-s/8, cx+s/2, cy+s/2);
+        SDL_RenderLine(renderer, cx+s/2, cy+s/2, cx-s/2, cy+s/2); SDL_RenderLine(renderer, cx-s/2, cy+s/2, cx-s/2, cy-s/4);
+    }
+    else if (icon_ == IconType::Grid) {
+        SDL_FRect outer{cx - s/2, cy - s/2, s, s}; SDL_RenderRect(renderer, &outer);
+        SDL_RenderLine(renderer, cx, cy - s/2, cx, cy + s/2); SDL_RenderLine(renderer, cx - s/2, cy, cx + s/2, cy);
+    }
+    else if (icon_ == IconType::Menu) {
+        SDL_RenderLine(renderer, cx+s/4, cy-s/4, cx-s/4, cy); SDL_RenderLine(renderer, cx-s/4, cy, cx+s/4, cy+s/4);
+    }
+    else if (icon_ == IconType::NewFile) {
+        SDL_RenderLine(renderer, cx-s/3, cy+s/2, cx+s/3, cy+s/2); SDL_RenderLine(renderer, cx-s/3, cy+s/2, cx-s/3, cy-s/2);
+        SDL_RenderLine(renderer, cx-s/3, cy-s/2, cx, cy-s/2); SDL_RenderLine(renderer, cx, cy-s/2, cx+s/3, cy-s/6);
+        SDL_RenderLine(renderer, cx+s/3, cy-s/6, cx+s/3, cy+s/2); SDL_RenderLine(renderer, cx, cy-s/2, cx, cy-s/6);
+        SDL_RenderLine(renderer, cx, cy-s/6, cx+s/3, cy-s/6);
+    }
+    else if (icon_ == IconType::Ruler) {
+        SDL_RenderLine(renderer, cx-s/2, cy+s/4, cx+s/2, cy-s/4); SDL_RenderLine(renderer, cx-s/2, cy+s/4, cx-s/4, cy+s/2);
+        SDL_RenderLine(renderer, cx+s/2, cy-s/4, cx+s/4, cy-s/2); SDL_RenderLine(renderer, cx-s/4, cy+s/2, cx+s/4, cy-s/2);
+        SDL_RenderLine(renderer, cx-s/8, cy+s/8, cx, cy+s/4); SDL_RenderLine(renderer, cx+s/8, cy, cx+s/4, cy+s/8);
+    }
+    else if (icon_ == IconType::Clock) {
+        drawCircle(cx, cy, s/2);
+        SDL_RenderLine(renderer, cx, cy, cx, cy-s/3); SDL_RenderLine(renderer, cx, cy, cx+s/4, cy+s/4);
+    }
+    else if (icon_ == IconType::Settings) {
+        drawCircle(cx, cy, s/3); drawCircle(cx, cy, s/2);
+        for(int i=0; i<8; ++i) SDL_RenderLine(renderer, cx+s/3*std::cos(i*PI/4.f), cy+s/3*std::sin(i*PI/4.f), cx+s/1.5f*std::cos(i*PI/4.f), cy+s/1.5f*std::sin(i*PI/4.f));
+    }
+    else if (icon_ == IconType::ExitIcon) {
+        SDL_SetRenderDrawColor(renderer, 255, 100, 100, 255);
+        SDL_RenderLine(renderer, cx-s/3, cy-s/3, cx+s/3, cy+s/3); SDL_RenderLine(renderer, cx-s/3, cy+s/3, cx+s/3, cy-s/3);
+    }
+        // رسم آیکون سیم کشی
+    else if (icon_ == IconType::WireIcon) {
+        SDL_SetRenderDrawColor(renderer, 0, 180, 80, 255); // رنگ سبز مهندسی
+        drawCircle(cx - s/2.5f, cy + s/4, 2);
+        drawCircle(cx + s/2.5f, cy - s/4, 2);
+        SDL_RenderLine(renderer, cx - s/2.5f, cy + s/4, cx, cy + s/4);
+        SDL_RenderLine(renderer, cx, cy + s/4, cx, cy - s/4);
+        SDL_RenderLine(renderer, cx, cy - s/4, cx + s/2.5f, cy - s/4);
+    }
 }
 
 void Button::render(SDL_Renderer* renderer, TTF_Font* font) const {
-    if (!renderer) {
-        return;
+    if (!renderer) return;
+
+    uint64_t currentTick = SDL_GetTicks();
+    if (lastTick_ == 0) lastTick_ = currentTick;
+    float dt = (currentTick - lastTick_) / 1000.0f;
+    lastTick_ = currentTick;
+
+    if (hovered_) {
+        hoverFactor_ += dt / 0.15f;
+        if (hoverFactor_ > 1.0f) hoverFactor_ = 1.0f;
+    } else {
+        hoverFactor_ -= dt / 0.15f;
+        if (hoverFactor_ < 0.0f) hoverFactor_ = 0.0f;
     }
 
-    const SDL_Color color = hovered_ ? hoverColor_ : normalColor_;
+    float scale = 1.0f + (0.02f * hoverFactor_);
+    float w = rect_.w * scale, h = rect_.h * scale;
+    float x = rect_.x - (w - rect_.w) / 2.0f;
+    float y = rect_.y - (h - rect_.h) / 2.0f;
 
-    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
-    SDL_RenderFillRect(renderer, &rect_);
+    SDL_Color color;
+    color.r = static_cast<Uint8>(normalColor_.r + (hoverColor_.r - normalColor_.r) * hoverFactor_);
+    color.g = static_cast<Uint8>(normalColor_.g + (hoverColor_.g - normalColor_.g) * hoverFactor_);
+    color.b = static_cast<Uint8>(normalColor_.b + (hoverColor_.b - normalColor_.b) * hoverFactor_);
+    color.a = 255;
 
-    if (!font || label_.empty()) {
-        return;
+    if (hoverFactor_ > 0.01f) {
+        fillRoundedRect(renderer, {x + 2.0f, y + 4.0f, w, h}, 8.0f, {0, 0, 0, static_cast<Uint8>(40 * hoverFactor_)});
     }
 
+    fillRoundedRect(renderer, {x, y, w, h}, 8.0f, color);
+
+    if (!font || label_.empty()) return;
     SDL_Surface* textSurface = TTF_RenderText_Blended(font, label_.c_str(), 0, textColor_);
-    if (!textSurface) {
-        return;
-    }
+    if (!textSurface) return;
 
     SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
-    if (!textTexture) {
-        SDL_DestroySurface(textSurface);
-        return;
+    if (!textTexture) { SDL_DestroySurface(textSurface); return; }
+
+    float iconSize = 18.0f * scale;
+    float totalWidth = static_cast<float>(textSurface->w) * scale;
+    if (icon_ != IconType::None) totalWidth += iconSize + 8.0f * scale;
+
+    float startX = x + (w - totalWidth) / 2.0f;
+    float textY = y + (h - static_cast<float>(textSurface->h) * scale) / 2.0f;
+
+    if (icon_ != IconType::None) {
+        drawVectorIcon(renderer, startX, y + (h - iconSize) / 2.0f, iconSize);
+        startX += iconSize + 8.0f * scale;
     }
 
-    const SDL_FRect textRect{
-            rect_.x + (rect_.w - static_cast<float>(textSurface->w)) / 2.0f,
-            rect_.y + (rect_.h - static_cast<float>(textSurface->h)) / 2.0f,
-            static_cast<float>(textSurface->w),
-            static_cast<float>(textSurface->h)
-    };
-
+    const SDL_FRect textRect{startX, textY, static_cast<float>(textSurface->w) * scale, static_cast<float>(textSurface->h) * scale};
     SDL_RenderTexture(renderer, textTexture, nullptr, &textRect);
-
     SDL_DestroyTexture(textTexture);
     SDL_DestroySurface(textSurface);
 }
 
-const std::string& Button::getLabel() const {
-    return label_;
-}
+const std::string& Button::getLabel() const { return label_; }

@@ -2,13 +2,13 @@
 #pragma once
 
 #include <iosfwd>
-#include <vector> // <-- FIX 1: Added to resolve the 'std::vector' error
+#include <vector>
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include "Canvas.h"
 #include "Point.h"
+#include "Wire.h"
 
-// FIX 2: Forward declaration tells the header that ComponentInstance exists
 class ComponentInstance;
 
 class CanvasRenderer {
@@ -20,12 +20,17 @@ public:
     void renderGridPreview(std::ostream& output, int columns = 21, int rows = 11) const;
     void renderSnapTest(std::ostream& output, const Point& rawMouseScreenPoint) const;
 
-    // متد گرافیکی بوم طراحی
     void renderSDL(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int windowHeight) const;
 
-    // FIX 3: Placed INSIDE the class definition so the compiler knows it belongs to CanvasRenderer
+    // رندر قطعات
     void renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font, const std::vector<ComponentInstance>& components) const;
+
+    // رندر سیم‌ها و گره‌های اتصال (جدید)
+    void renderWiresSDL(SDL_Renderer* renderer, const std::vector<Wire>& wires) const;
 
 private:
     const Canvas& canvas_;
+
+    // تابع کمکی برای رسم گره اتصال (Junction Dot)
+    void fillScreenCircle(SDL_Renderer* renderer, float cx, float cy, float r, SDL_Color c) const;
 };
