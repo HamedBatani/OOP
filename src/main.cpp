@@ -10,6 +10,7 @@
 #include "ProjectManager.h"
 #include "ComponentInstance.h"
 #include "Wire.h"
+#include "Junction.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
@@ -20,6 +21,7 @@
 #include <map>
 #include <algorithm>
 #include <cctype>
+#include <set>
 
 namespace {
     constexpr int WindowWidth = 800;
@@ -39,7 +41,7 @@ namespace {
     }
 
     TTF_Font* loadFont() {
-        const char* path = "C:\\Users\\bilgi\\OneDrive\\Desktop\\DejaVuSans.ttf";
+        const char* path = "C:\\Users\\Asus\\OneDrive\\Desktop\\DejaVuSans.ttf";
         TTF_Font* font = TTF_OpenFont(path, 24);
         if (!font) {
             std::cerr << "Font loading failed: " << SDL_GetError() << '\n';
@@ -48,6 +50,49 @@ namespace {
             SDL_Quit();
         }
         return font;
+    }
+
+    // -----------------------------------------------------------------
+    // تابع کمکی جدید: پیدا کردن یک وایر در vector<Wire> بر اساس uid
+    // (لازم است چون WireAnchor از uid استفاده می‌کند، نه ایندکس، تا با
+    //  حذف/جابجایی وایرهای دیگر خراب نشود)
+    // -----------------------------------------------------------------
+    Wire* findWireByUid(std::vector<Wire>& wires, const std::string& uid) {
+        for (auto& w : wires) {
+            if (w.uid == uid) return &w;
+        }
+        return nullptr;
+    }
+
+    // -----------------------------------------------------------------
+    // تابع کمکی جدید: محاسبه‌ی موقعیت واقعی فعلی یک انکر
+    // اگر PinLock باشد، از لیست کامپوننت‌ها موقعیت پین را می‌گیرد
+    // اگر WireLock باشد، از وایر میزبان (با uid) موقعیت روی سگمنت را می‌گیرد
+    // اگر Free باشد، همان cachedWorldPos را برمی‌گرداند
+    // -----------------------------------------------------------------
+    Point resolveAnchorPosition(const WireAnchor& anchor,
+                                const std::vector<ComponentInstance>& components,
+                                std::vector<Wire>& wires) {
+        if (anchor.isPinLock()) {
+            for (const auto& comp : components) {
+                if (comp.labelId == anchor.lockedCompId) {
+                    for (const auto& pin : comp.pins) {
+                        if (pin.designation == anchor.lockedPinName) {
+                            return pin.calculatedWorldPos;
+                        }
+                    }
+                }
+            }
+            return anchor.cachedWorldPos;
+        }
+        if (anchor.isWireLock()) {
+            Wire* hostWire = findWireByUid(wires, anchor.lockedWireUid);
+            if (hostWire) {
+                return hostWire->resolvePointOnSegment(anchor.lockedSegmentIndex, anchor.lockedSegmentT);
+            }
+            return anchor.cachedWorldPos;
+        }
+        return anchor.cachedWorldPos;
     }
 }
 
@@ -111,12 +156,52 @@ int main(int, char**) {
     const std::vector<std::string> contextOptions = {"Properties", "Rotate 90", "Mirror Horiz", "Mirror Vert", "Delete"};
     int hoveredContextOption = -1;
 
+    // ------------------------------------------------------------------
+    // متغیرهای جدید برای درگ کردن کل وایر (فقط وقتی هر دو سر آزاد باشند -
+    // طبق تصمیم گرفته‌شده در گفتگو) و برای نگه‌داشتن هایلایت وایر هاور شده
+    // ------------------------------------------------------------------
+    bool isDraggingWire = false;
+    int draggingWireIndex = -1;
+    Point wireDragStartWorldMouse{0.0f, 0.0f};
+    std::vector<Point> wireDragStartRoutingPoints;
+
+    int hoveredWireIndexForDrag = -1;
+
+    // ------------------------------------------------------------------
+    // متغیرهای جدید برای درگ تک-نقطه‌ای انتهای آزاد یک وایر (حل درخواست
+    // اول کاربر: «وقتی وایری رو تا یه جا می‌کشم و متوقف می‌کنم، بعدش
+    // بتونم همون نقطه‌ی تنها/آزادو دوباره بگیرم و بکشم و به یه جای
+    // دیگه وصل کنم»). این با درگ کل وایر فرق دارد: فقط یک سر آزاد
+    // حرکت می‌کند، نه کل بدنه.
+    // ------------------------------------------------------------------
+    bool isDraggingWireEndpoint = false;
+    int draggingEndpointWireIndex = -1;
+    bool draggingEndpointIsStart = false; // true اگر سر شروع، false اگر سر پایان
+    const float endpointGrabRadius = 10.0f;
+
+    // ------------------------------------------------------------------
+    // تابع جدید: propagateWireUpdates
+    // این تابع جایگزین updateConnectedWires نمی‌شود، بلکه علاوه بر آن
+    // اضافه می‌شود و منطق قدیمی updateConnectedWires را هم فراخوانی می‌کند.
+    // کارش این است که بعد از هرگونه تغییر (جابجایی کامپوننت یا وایر)،
+    // تمام وایرهایی که به صورت WireLock به وایرهای دیگر گره خورده‌اند را
+    // هم به‌روز کند (حل مشکل ۱ و ۲ گفتگو: زنجیره‌ی junctionها).
+    // از یک حلقه‌ی محدود (چند بار تکرار) استفاده می‌شود تا زنجیره‌های
+    // چندسطحی از junctionها هم درست resolve شوند، بدون ریسک حلقه‌ی بی‌نهایت.
+    // ------------------------------------------------------------------
     auto updateConnectedWires = [&](const ComponentInstance& comp) {
         for (auto& wire : circuitWires) {
             if (wire.startCompId == comp.labelId) {
                 for (const auto& p : comp.pins) {
                     if (p.designation == wire.startPinName) {
-                        wire.updateOrthogonalRoute(p.calculatedWorldPos, wire.routingPoints.back());
+                        // فیکس مشکل «به‌هم‌ریختن روتینگ»: به‌جای بازسازی کامل مسیر با
+                        // یک خم ساده (updateOrthogonalRoute)، از rerouteSmartPreservingShape
+                        // استفاده می‌کنیم که شکل نسبی مسیر قبلی (تعداد و جهت خم‌ها) را
+                        // حفظ می‌کند و فقط بخش نزدیک به سر جابجاشده را تغییر می‌دهد --
+                        // دقیقاً طبق مثالی که در گفتگو توضیح داده شد.
+                        Point endPos = wire.routingPoints.empty() ? p.calculatedWorldPos : wire.routingPoints.back();
+                        wire.rerouteSmartPreservingShape(p.calculatedWorldPos, endPos);
+                        wire.startAnchor.cachedWorldPos = p.calculatedWorldPos;
                         break;
                     }
                 }
@@ -124,12 +209,104 @@ int main(int, char**) {
             if (wire.endCompId == comp.labelId) {
                 for (const auto& p : comp.pins) {
                     if (p.designation == wire.endPinName) {
-                        wire.updateOrthogonalRoute(wire.routingPoints.front(), p.calculatedWorldPos);
+                        Point startPos = wire.routingPoints.empty() ? p.calculatedWorldPos : wire.routingPoints.front();
+                        wire.rerouteSmartPreservingShape(startPos, p.calculatedWorldPos);
+                        wire.endAnchor.cachedWorldPos = p.calculatedWorldPos;
                         break;
                     }
                 }
             }
         }
+    };
+
+    auto propagateWireUpdates = [&](int maxIterations = 4) {
+        // چند بار تکرار می‌کنیم چون ممکن است وایر A به وایر B و وایر B هم
+        // به وایر C وصل باشد (زنجیره‌ی چندسطحی). با چند پاس، همه resolve می‌شوند.
+        for (int iteration = 0; iteration < maxIterations; ++iteration) {
+            bool anyChanged = false;
+
+            for (auto& wire : circuitWires) {
+                Point currentStart = wire.routingPoints.empty() ? Point{0.0f, 0.0f} : wire.routingPoints.front();
+                Point currentEnd = wire.routingPoints.empty() ? Point{0.0f, 0.0f} : wire.routingPoints.back();
+
+                Point newStart = currentStart;
+                Point newEnd = currentEnd;
+
+                if (wire.startAnchor.isWireLock()) {
+                    newStart = resolveAnchorPosition(wire.startAnchor, placedComponents, circuitWires);
+                } else if (wire.startAnchor.isPinLock()) {
+                    newStart = resolveAnchorPosition(wire.startAnchor, placedComponents, circuitWires);
+                }
+
+                if (wire.endAnchor.isWireLock()) {
+                    newEnd = resolveAnchorPosition(wire.endAnchor, placedComponents, circuitWires);
+                } else if (wire.endAnchor.isPinLock()) {
+                    newEnd = resolveAnchorPosition(wire.endAnchor, placedComponents, circuitWires);
+                }
+
+                const float epsilon = 0.01f;
+                bool changed = (std::hypot(newStart.x - currentStart.x, newStart.y - currentStart.y) > epsilon) ||
+                               (std::hypot(newEnd.x - currentEnd.x, newEnd.y - currentEnd.y) > epsilon);
+
+                if (changed) {
+                    // فیکس مشکل «به‌هم‌ریختن روتینگ»: همان دلیلی که در updateConnectedWires
+                    // توضیح داده شد -- به‌جای بازسازی کامل، شکل نسبی مسیر حفظ می‌شود
+                    wire.rerouteSmartPreservingShape(newStart, newEnd);
+                    anyChanged = true;
+                }
+            }
+
+            if (!anyChanged) break;
+        }
+    };
+
+    // ------------------------------------------------------------------
+    // تابع جدید: rehomeWireEndpointIfOnWire
+    // وقتی کاربر یک وایر جدید را تا وسط یک وایر دیگر می‌کشد و رها می‌کند،
+    // این تابع بررسی می‌کند که آیا نقطه‌ی رهاسازی روی بدنه‌ی یک وایر دیگر
+    // افتاده است یا نه. اگر بله، به‌جای یک Point آزاد صرف، یک WireLock
+    // واقعی می‌سازد تا این دو وایر واقعاً به هم گره بخورند (حل اصلی‌ترین
+    // بخش مشکل ۱ و ۲ گفتگو).
+    // ------------------------------------------------------------------
+    auto rehomeWireEndpointIfOnWire = [&](Wire& wire, bool isStartEndpoint, const Point& releasePoint, float tolerance) -> Point {
+        Wire::ClosestPointResult best;
+        best.distance = 1e9f;
+        int bestWireIdx = -1;
+
+        for (size_t i = 0; i < circuitWires.size(); ++i) {
+            // یک وایر نباید به خودش قفل شود
+            if (circuitWires[i].uid == wire.uid) continue;
+            if (!circuitWires[i].isCompleted) continue;
+
+            auto candidate = circuitWires[i].findClosestPointOnWire(releasePoint);
+            if (candidate.found && candidate.distance < tolerance && candidate.distance < best.distance) {
+                best = candidate;
+                bestWireIdx = static_cast<int>(i);
+            }
+        }
+
+        if (bestWireIdx >= 0) {
+            WireAnchor lockedAnchor = WireAnchor::makeWireLock(
+                    circuitWires[bestWireIdx].uid, best.segmentIndex, best.t, best.point);
+            if (isStartEndpoint) {
+                wire.startAnchor = lockedAnchor;
+            } else {
+                wire.endAnchor = lockedAnchor;
+            }
+            return best.point;
+        }
+
+        // اگر روی هیچ وایر دیگری نبود، انکر آزاد باقی می‌ماند (رفتار قدیمی حفظ می‌شود)
+        if (isStartEndpoint) {
+            if (wire.startAnchor.kind != AnchorKind::PinLock) {
+                wire.startAnchor = WireAnchor::makeFree(releasePoint);
+            }
+        } else {
+            if (wire.endAnchor.kind != AnchorKind::PinLock) {
+                wire.endAnchor = WireAnchor::makeFree(releasePoint);
+            }
+        }
+        return releasePoint;
     };
 
     while (running && currentState != AppState::Exit) {
@@ -211,14 +388,17 @@ int main(int, char**) {
                                         comp.rotationDegrees = (comp.rotationDegrees + 90) % 360;
                                         comp.updatePinPositions();
                                         updateConnectedWires(comp);
+                                        propagateWireUpdates();
                                     } else if (selectedOption == 2) {
                                         comp.isMirroredH = !comp.isMirroredH;
                                         comp.updatePinPositions();
                                         updateConnectedWires(comp);
+                                        propagateWireUpdates();
                                     } else if (selectedOption == 3) {
                                         comp.isMirroredV = !comp.isMirroredV;
                                         comp.updatePinPositions();
                                         updateConnectedWires(comp);
+                                        propagateWireUpdates();
                                     } else if (selectedOption == 4) {
                                         std::string delId = comp.labelId;
                                         circuitWires.erase(std::remove_if(circuitWires.begin(), circuitWires.end(), [&](const Wire& w) {
@@ -241,6 +421,8 @@ int main(int, char**) {
                         for (auto& comp : placedComponents) comp.isSelected = false;
                         for (auto& wire : circuitWires) wire.isSelected = false;
                         if (isWiring) { isWiring = false; circuitWires.pop_back(); }
+                        if (isDraggingWire) { isDraggingWire = false; draggingWireIndex = -1; }
+                        if (isDraggingWireEndpoint) { isDraggingWireEndpoint = false; draggingEndpointWireIndex = -1; }
                     }
                     else if ((event.key.mod & SDL_KMOD_CTRL) && event.key.key == SDLK_S) {
                         isSaveDialogOpen = true; saveFileName = "";
@@ -252,6 +434,7 @@ int main(int, char**) {
                                     comp.rotationDegrees = (comp.rotationDegrees + 90) % 360;
                                     comp.updatePinPositions();
                                     updateConnectedWires(comp);
+                                    propagateWireUpdates();
                                 }
                             }
                         }
@@ -261,6 +444,7 @@ int main(int, char**) {
                                     comp.isMirroredH = !comp.isMirroredH;
                                     comp.updatePinPositions();
                                     updateConnectedWires(comp);
+                                    propagateWireUpdates();
                                 }
                             }
                         }
@@ -270,6 +454,7 @@ int main(int, char**) {
                                     comp.isMirroredV = !comp.isMirroredV;
                                     comp.updatePinPositions();
                                     updateConnectedWires(comp);
+                                    propagateWireUpdates();
                                 }
                             }
                         }
@@ -277,11 +462,27 @@ int main(int, char**) {
                             std::vector<std::string> idsToDelete;
                             for(auto& c : placedComponents) if(c.isSelected) idsToDelete.push_back(c.labelId);
 
+                            std::set<std::string> uidsToDelete;
+                            for (auto& w : circuitWires) {
+                                if (w.isSelected) uidsToDelete.insert(w.uid);
+                            }
+
                             circuitWires.erase(std::remove_if(circuitWires.begin(), circuitWires.end(), [&](const Wire& w) {
                                 return w.isSelected ||
                                        std::find(idsToDelete.begin(), idsToDelete.end(), w.startCompId) != idsToDelete.end() ||
                                        std::find(idsToDelete.begin(), idsToDelete.end(), w.endCompId) != idsToDelete.end();
                             }), circuitWires.end());
+
+                            // اگر وایری که حذف شد میزبان یک WireLock بود، آن انکرها را آزاد کن
+                            // (جلوگیری از dangling reference به یک uid دیگر موجود نیست)
+                            for (auto& w : circuitWires) {
+                                if (w.startAnchor.isWireLock() && uidsToDelete.count(w.startAnchor.lockedWireUid) > 0) {
+                                    w.startAnchor = WireAnchor::makeFree(w.routingPoints.empty() ? Point{0.0f,0.0f} : w.routingPoints.front());
+                                }
+                                if (w.endAnchor.isWireLock() && uidsToDelete.count(w.endAnchor.lockedWireUid) > 0) {
+                                    w.endAnchor = WireAnchor::makeFree(w.routingPoints.empty() ? Point{0.0f,0.0f} : w.routingPoints.back());
+                                }
+                            }
 
                             placedComponents.erase(std::remove_if(placedComponents.begin(), placedComponents.end(),
                                                                   [](const ComponentInstance& comp) { return comp.isSelected; }), placedComponents.end());
@@ -328,6 +529,51 @@ int main(int, char**) {
                                     updateConnectedWires(comp);
                                 }
                             }
+                            propagateWireUpdates();
+                        }
+                        else if (isDraggingWire && draggingWireIndex >= 0 && draggingWireIndex < static_cast<int>(circuitWires.size())) {
+                            // -------------------------------------------------------------
+                            // منطق جدید: درگ کردن کل وایر (فقط وقتی isFullyFree() باشد -
+                            // این شرط پیش از شروع درگ در MOUSE_BUTTON_DOWN چک شده است)
+                            // -------------------------------------------------------------
+                            Point mouseDelta = currentWorldMouse - wireDragStartWorldMouse;
+                            Point snappedDelta = canvas->snapToGrid(mouseDelta);
+
+                            Wire& draggedWire = circuitWires[draggingWireIndex];
+                            draggedWire.routingPoints.clear();
+                            for (const auto& originalPoint : wireDragStartRoutingPoints) {
+                                draggedWire.routingPoints.push_back(originalPoint + snappedDelta);
+                            }
+                            if (!draggedWire.routingPoints.empty()) {
+                                draggedWire.startAnchor.cachedWorldPos = draggedWire.routingPoints.front();
+                                draggedWire.endAnchor.cachedWorldPos = draggedWire.routingPoints.back();
+                            }
+                            propagateWireUpdates();
+                        }
+                        else if (isDraggingWireEndpoint && draggingEndpointWireIndex >= 0 && draggingEndpointWireIndex < static_cast<int>(circuitWires.size())) {
+                            // -------------------------------------------------------------
+                            // منطق جدید: درگ تک-نقطه‌ای نوک آزاد یک وایر (حل درخواست اول
+                            // کاربر در گفتگو). هنگام درگ، پین‌های نزدیک هایلایت می‌شوند تا
+                            // کاربر بتواند نوک را به یک پین واقعی اسنپ/وصل کند.
+                            // -------------------------------------------------------------
+                            float sensitivity = 10.0f / canvas->zoom();
+                            for (auto& comp : placedComponents) comp.checkPinHover(currentWorldMouse, sensitivity);
+
+                            Point targetPoint = canvas->snapToGrid(currentWorldMouse);
+                            for (auto& comp : placedComponents) {
+                                for (auto& pin : comp.pins) {
+                                    if (pin.isHighlighted) { targetPoint = pin.calculatedWorldPos; }
+                                }
+                            }
+
+                            Wire& w = circuitWires[draggingEndpointWireIndex];
+                            if (draggingEndpointIsStart) {
+                                Point fixedEnd = w.routingPoints.empty() ? targetPoint : w.routingPoints.back();
+                                w.rerouteSmartPreservingShape(targetPoint, fixedEnd);
+                            } else {
+                                Point fixedStart = w.routingPoints.empty() ? targetPoint : w.routingPoints.front();
+                                w.rerouteSmartPreservingShape(fixedStart, targetPoint);
+                            }
                         }
                         else if (isSelectDragging) {
                             float x1 = selectDragStartScreen.x, y1 = selectDragStartScreen.y;
@@ -349,6 +595,19 @@ int main(int, char**) {
                                     }
                                 }
                                 circuitWires.back().updateOrthogonalRoute(wiringStartPoint, targetPoint);
+                            } else {
+                                // -------------------------------------------------------------
+                                // منطق جدید: هاور روی بدنه‌ی یک وایر آزاد، برای دادن فیدبک بصری
+                                // که این وایر قابل درگ کامل است (فقط برای وایرهای isFullyFree)
+                                // -------------------------------------------------------------
+                                hoveredWireIndexForDrag = -1;
+                                float wireSensitivity = 6.0f / canvas->zoom();
+                                for (int i = static_cast<int>(circuitWires.size()) - 1; i >= 0; --i) {
+                                    if (circuitWires[i].isFullyFree() && circuitWires[i].containsPoint(currentWorldMouse, wireSensitivity)) {
+                                        hoveredWireIndexForDrag = i;
+                                        break;
+                                    }
+                                }
                             }
                         }
                     }
@@ -407,13 +666,31 @@ int main(int, char**) {
                                     if (validConnection && activeWiringCompId == eComp && activeWiringPinName == ePin) {
                                         // کلیک روی همون پایه مبدا نادیده گرفته بشه
                                     } else {
+                                        Wire& newWire = circuitWires.back();
                                         if (validConnection) {
-                                            circuitWires.back().endCompId = eComp;
-                                            circuitWires.back().endPinName = ePin;
+                                            newWire.endCompId = eComp;
+                                            newWire.endPinName = ePin;
+                                            newWire.endAnchor = WireAnchor::makePinLock(eComp, ePin, snapPt);
+                                        } else {
+                                            // -------------------------------------------------------------
+                                            // منطق جدید: اگر روی هیچ پینی رها نشد، بررسی کن که آیا روی
+                                            // بدنه‌ی یک وایر دیگر افتاده است یا نه (ساخت WireLock واقعی).
+                                            // این دقیقاً حل‌کننده‌ی مشکل ۱ و ۲ از گفتگو است.
+                                            // -------------------------------------------------------------
+                                            float lockTolerance = 8.0f / canvas->zoom();
+                                            snapPt = rehomeWireEndpointIfOnWire(newWire, false, snapPt, lockTolerance);
                                         }
-                                        circuitWires.back().isCompleted = true;
-                                        circuitWires.back().updateOrthogonalRoute(wiringStartPoint, snapPt);
+                                        newWire.isCompleted = true;
+                                        newWire.updateOrthogonalRoute(wiringStartPoint, snapPt);
                                         isWiring = false;
+                                        // -------------------------------------------------------------
+                                        // فیکس باگ ریشه‌ای: بعد از تکمیل یک وایر در حالت Wire Mode، این
+                                        // حالت باید خاموش شود، وگرنه کلیک بعدی روی بوم دوباره وارد حالت
+                                        // وایرکشی جدید می‌شود به‌جای اینکه اجازه بدهد کاربر روی وایر
+                                        // موجود کلیک کند و درگش کند. این ریشه‌ی اصلی "درگ اصلا کار نمی‌کرد" بود.
+                                        // -------------------------------------------------------------
+                                        isWireModeActive = false;
+                                        propagateWireUpdates();
                                     }
                                     continue;
                                 }
@@ -437,6 +714,17 @@ int main(int, char**) {
                                     activeWiringCompId = pCompId;
                                     activeWiringPinName = pPinName;
                                     circuitWires.push_back(Wire(pCompId, pPinName, wiringStartPoint));
+
+                                    // -------------------------------------------------------------
+                                    // منطق جدید: اگر وایرکشی نه از یک پین بلکه از وسط یک وایر دیگر
+                                    // شروع شده باشد (isWireModeActive بدون clickedOnPin)، همان‌جا هم
+                                    // یک WireLock برای نقطه‌ی شروع بساز.
+                                    // -------------------------------------------------------------
+                                    if (!clickedOnPin) {
+                                        float lockTolerance = 8.0f / canvas->zoom();
+                                        Wire& justCreated = circuitWires.back();
+                                        rehomeWireEndpointIfOnWire(justCreated, true, wiringStartPoint, lockTolerance);
+                                    }
                                     continue;
                                 }
 
@@ -475,6 +763,48 @@ int main(int, char**) {
                                             for (auto& comp : placedComponents) if (comp.isSelected) comp.dragStartPos = comp.worldPos;
                                         }
                                     } else {
+                                        // -------------------------------------------------------------
+                                        // منطق جدید: اول بررسی کن آیا کلیک دقیقاً روی یک نوک آزاد
+                                        // (endpoint که Free است، نه PinLock و نه WireLock) افتاده است.
+                                        // این اولویت بالاتری از hit-test کل بدنه‌ی وایر دارد چون کاربر
+                                        // در این حالت قصدش گرفتن دقیق همان نوک برای کشیدن است، نه
+                                        // جابجایی کل وایر. حل درخواست اول کاربر در گفتگو.
+                                        // -------------------------------------------------------------
+                                        bool hitFreeEndpoint = false;
+                                        int hitEndpointWireIndex = -1;
+                                        bool hitEndpointIsStart = false;
+                                        float endpointSensitivity = endpointGrabRadius / canvas->zoom();
+
+                                        for (int i = static_cast<int>(circuitWires.size()) - 1; i >= 0; --i) {
+                                            Wire& w = circuitWires[i];
+                                            if (w.routingPoints.empty()) continue;
+
+                                            if (w.startAnchor.isFree()) {
+                                                Point sp = w.routingPoints.front();
+                                                if (sp.distanceTo(worldMouse) <= endpointSensitivity) {
+                                                    hitFreeEndpoint = true; hitEndpointWireIndex = i; hitEndpointIsStart = true; break;
+                                                }
+                                            }
+                                            if (w.endAnchor.isFree()) {
+                                                Point ep = w.routingPoints.back();
+                                                if (ep.distanceTo(worldMouse) <= endpointSensitivity) {
+                                                    hitFreeEndpoint = true; hitEndpointWireIndex = i; hitEndpointIsStart = false; break;
+                                                }
+                                            }
+                                        }
+
+                                        if (hitFreeEndpoint) {
+                                            if (!(event.key.mod & SDL_KMOD_SHIFT)) {
+                                                for (auto& c : placedComponents) c.isSelected = false;
+                                                for (auto& w : circuitWires) w.isSelected = false;
+                                            }
+                                            circuitWires[hitEndpointWireIndex].isSelected = true;
+                                            isDraggingWireEndpoint = true;
+                                            draggingEndpointWireIndex = hitEndpointWireIndex;
+                                            draggingEndpointIsStart = hitEndpointIsStart;
+                                            continue;
+                                        }
+
                                         bool hitWireDetected = false; int hitWireIndex = -1;
                                         float wireSensitivity = 6.0f / canvas->zoom();
 
@@ -490,6 +820,18 @@ int main(int, char**) {
                                                 for (auto& w : circuitWires) w.isSelected = false;
                                             }
                                             circuitWires[hitWireIndex].isSelected = true;
+
+                                            // -------------------------------------------------------------
+                                            // منطق جدید: شروع درگ کردن کل وایر -- فقط اگر هر دو سرش آزاد باشد
+                                            // (طبق تصمیم گرفته‌شده در گفتگو: وایری که به یک پین قفل است
+                                            //  نباید به‌صورت کامل کشیده شود، چون آن سر باید ثابت بماند)
+                                            // -------------------------------------------------------------
+                                            if (circuitWires[hitWireIndex].isFullyFree()) {
+                                                isDraggingWire = true;
+                                                draggingWireIndex = hitWireIndex;
+                                                wireDragStartWorldMouse = worldMouse;
+                                                wireDragStartRoutingPoints = circuitWires[hitWireIndex].routingPoints;
+                                            }
                                         }
                                         else {
                                             if (!(event.key.mod & SDL_KMOD_SHIFT)) {
@@ -509,6 +851,61 @@ int main(int, char**) {
                         if (event.button.button == SDL_BUTTON_MIDDLE) isPanning = false;
                         else if (event.button.button == SDL_BUTTON_LEFT) {
                             if (isDraggingComponents) isDraggingComponents = false;
+                            else if (isDraggingWire) {
+                                isDraggingWire = false;
+                                draggingWireIndex = -1;
+                                wireDragStartRoutingPoints.clear();
+                            }
+                            else if (isDraggingWireEndpoint && draggingEndpointWireIndex >= 0 && draggingEndpointWireIndex < static_cast<int>(circuitWires.size())) {
+                                // -------------------------------------------------------------
+                                // منطق جدید: پایان درگ نوک آزاد. بررسی می‌کنیم آیا موس روی یک
+                                // پین واقعی است (اتصال PinLock) یا روی بدنه‌ی یک وایر دیگر
+                                // (اتصال WireLock) یا هیچ‌کدام (باقی‌ماندن Free در نقطه‌ی جدید).
+                                // -------------------------------------------------------------
+                                Wire& w = circuitWires[draggingEndpointWireIndex];
+                                Point releasePoint = draggingEndpointIsStart
+                                                     ? (w.routingPoints.empty() ? Point{0.0f,0.0f} : w.routingPoints.front())
+                                                     : (w.routingPoints.empty() ? Point{0.0f,0.0f} : w.routingPoints.back());
+
+                                bool connectedToPin = false;
+                                std::string foundCompId, foundPinName;
+                                Point foundPinPos = releasePoint;
+                                for (const auto& comp : placedComponents) {
+                                    for (const auto& pin : comp.pins) {
+                                        if (pin.isHighlighted) {
+                                            connectedToPin = true;
+                                            foundCompId = comp.labelId;
+                                            foundPinName = pin.designation;
+                                            foundPinPos = pin.calculatedWorldPos;
+                                            break;
+                                        }
+                                    }
+                                    if (connectedToPin) break;
+                                }
+
+                                if (connectedToPin) {
+                                    if (draggingEndpointIsStart) {
+                                        w.startCompId = foundCompId;
+                                        w.startPinName = foundPinName;
+                                        w.startAnchor = WireAnchor::makePinLock(foundCompId, foundPinName, foundPinPos);
+                                        Point fixedEnd = w.routingPoints.empty() ? foundPinPos : w.routingPoints.back();
+                                        w.rerouteSmartPreservingShape(foundPinPos, fixedEnd);
+                                    } else {
+                                        w.endCompId = foundCompId;
+                                        w.endPinName = foundPinName;
+                                        w.endAnchor = WireAnchor::makePinLock(foundCompId, foundPinName, foundPinPos);
+                                        Point fixedStart = w.routingPoints.empty() ? foundPinPos : w.routingPoints.front();
+                                        w.rerouteSmartPreservingShape(fixedStart, foundPinPos);
+                                    }
+                                } else {
+                                    float lockTolerance = 8.0f / canvas->zoom();
+                                    rehomeWireEndpointIfOnWire(w, draggingEndpointIsStart, releasePoint, lockTolerance);
+                                }
+
+                                propagateWireUpdates();
+                                isDraggingWireEndpoint = false;
+                                draggingEndpointWireIndex = -1;
+                            }
                             else if (isSelectDragging) {
                                 isSelectDragging = false;
                                 Point worldStart = canvas->screenToWorld({ visualSelectBox.x - 200.0f, visualSelectBox.y - 45.0f });

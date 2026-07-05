@@ -198,6 +198,21 @@ void CanvasRenderer::renderWiresSDL(SDL_Renderer* renderer, const std::vector<Wi
             Point pStart = canvas_.worldToScreen(wire.routingPoints.front());
             fillScreenCircle(renderer, pStart.x, pStart.y, 4.0f, wireColor);
         }
+
+        // -------------------------------------------------------------
+        // بخش جدید: هایلایت بصری نوک‌های آزاد (Free anchor) با رنگ نارنجی
+        // تا کاربر متوجه شود این نقاط قابل گرفتن و کشیدن دوباره هستند
+        // (حل درخواست اول کاربر در گفتگو: امکان گرفتن دوباره‌ی نوک آزاد)
+        // -------------------------------------------------------------
+        SDL_Color freeEndpointColor{255, 140, 0, 255};
+        if (wire.startAnchor.isFree() && !wire.routingPoints.empty()) {
+            Point pFreeStart = canvas_.worldToScreen(wire.routingPoints.front());
+            fillScreenCircle(renderer, pFreeStart.x, pFreeStart.y, 5.0f, freeEndpointColor);
+        }
+        if (wire.endAnchor.isFree() && !wire.routingPoints.empty()) {
+            Point pFreeEnd = canvas_.worldToScreen(wire.routingPoints.back());
+            fillScreenCircle(renderer, pFreeEnd.x, pFreeEnd.y, 5.0f, freeEndpointColor);
+        }
     }
 }
 
