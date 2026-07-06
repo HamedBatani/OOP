@@ -5,7 +5,7 @@
 #include <cmath>
 
 namespace {
-    constexpr float PI = 3.14159265358979323846f;
+    constexpr float PI = 3.1415926535f;
 }
 
 bool ComponentLibrary::containsIgnoreCase(const std::string& text, const std::string& query) {
@@ -20,9 +20,10 @@ bool ComponentLibrary::containsIgnoreCase(const std::string& text, const std::st
 
 ComponentLibrary::ComponentLibrary(float x, float y, float width, float height)
         : x_(x), y_(y), width_(width), height_(height) {
-    categories_.push_back({"Analog", true, {"Resistor", "Capacitor", "Inductor", "Diode", "Op-Amp"}});
-    categories_.push_back({"Digital", false, {"AND Gate", "OR Gate", "NOT Gate", "Flip-Flop"}});
-    categories_.push_back({"Power", false, {"DC Source", "AC Source", "Ground"}});
+    // Aligned perfectly with Section 1.6 & 2.6 Classifications
+    categories_.push_back({"Main Sources", true, {"Ground", "DC Source", "Battery", "Clock Generator"}});
+    categories_.push_back({"Passive Components", true, {"Resistor", "Capacitor", "Inductor"}});
+    categories_.push_back({"Digital & Analog", false, {"Diode", "Op-Amp", "AND Gate", "OR Gate", "NOT Gate", "Flip-Flop"}});
     categories_.push_back({"Measurement", false, {"Voltmeter", "Ammeter", "Oscilloscope"}});
 }
 
@@ -324,7 +325,6 @@ void ComponentLibrary::renderPreviewBox(SDL_Renderer* renderer, TTF_Font* font, 
     float cx = x_ + width_ / 2.0f;
     float cy = previewBg.y + (previewHeight / 2.0f) + 10.0f;
 
-    // --- توابع رنگ‌امیزی داخلی مختص بخش پیش‌نمایش ---
     auto fillTrianglePreview = [&](float x1, float y1, float x2, float y2, float x3, float y3, SDL_Color c) {
         SDL_FColor fc = {c.r / 255.0f, c.g / 255.0f, c.b / 255.0f, c.a / 255.0f};
         SDL_Vertex v[3] = {{{cx + x1, cy + y1}, fc, {0, 0}}, {{cx + x2, cy + y2}, fc, {0, 0}}, {{cx + x3, cy + y3}, fc, {0, 0}}};
@@ -362,8 +362,8 @@ void ComponentLibrary::renderPreviewBox(SDL_Renderer* renderer, TTF_Font* font, 
         }
     };
 
-    SDL_Color fillC = {250, 220, 220, 255}; // قرمز خیلی ملایم و توپر
-    SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255); // قرمز تیره برای حاشیه
+    SDL_Color fillC = {250, 220, 220, 255};
+    SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
 
     if (compName == "Resistor") {
         SDL_FRect body{cx - 16, cy - 8, 32, 16};
@@ -392,6 +392,34 @@ void ComponentLibrary::renderPreviewBox(SDL_Renderer* renderer, TTF_Font* font, 
                 SDL_RenderLine(renderer, bx + 5.0f * std::cos(PI + j * step), cy + 5.0f * std::sin(PI + j * step), bx + 5.0f * std::cos(PI + (j+1) * step), cy + 5.0f * std::sin(PI + (j+1) * step));
             }
         }
+    }
+    else if (compName == "Battery") {
+        // --- Render implementation for Section 1.6 Battery -- alternating plate lengths
+        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
+        SDL_RenderLine(renderer, cx - 20, cy, cx - 8, cy);
+        SDL_RenderLine(renderer, cx + 8, cy, cx + 20, cy);
+
+        SDL_RenderLine(renderer, cx - 8, cy - 15, cx - 8, cy + 15); // Long positive plate
+        SDL_RenderLine(renderer, cx - 3, cy - 8, cx - 3, cy + 8);   // Short thick negative plate
+        SDL_RenderLine(renderer, cx + 2, cy - 15, cx + 2, cy + 15); // Long plate
+        SDL_RenderLine(renderer, cx + 7, cy - 8, cx + 7, cy + 8);   // Short thick plate
+    }
+    else if (compName == "Clock Generator") {
+        // --- Render implementation for Section 1.6 Pulse Clock -- Circle containing square wave shape
+        fillCirclePreview(0, 0, 16, fillC);
+        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
+        drawCircle(cx, cy, 16);
+        SDL_RenderLine(renderer, cx - 28, cy, cx - 16, cy);
+        SDL_RenderLine(renderer, cx + 16, cy, cx + 28, cy);
+
+        // Internal Square Pulse Symbol
+        SDL_RenderLine(renderer, cx - 10, cy + 4, cx - 5, cy + 4);
+        SDL_RenderLine(renderer, cx - 5, cy + 4, cx - 5, cy - 4);
+        SDL_RenderLine(renderer, cx - 5, cy - 4, cx + 0, cy - 4);
+        SDL_RenderLine(renderer, cx + 0, cy - 4, cx + 0, cy + 4);
+        SDL_RenderLine(renderer, cx + 0, cy + 4, cx + 5, cy + 4);
+        SDL_RenderLine(renderer, cx + 5, cy + 4, cx + 5, cy - 4);
+        SDL_RenderLine(renderer, cx + 5, cy - 4, cx + 10, cy - 4);
     }
     else if (compName == "Diode") {
         fillTrianglePreview(-12, -12, -12, 12, 12, 0, fillC);

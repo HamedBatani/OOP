@@ -4,8 +4,10 @@
 #include <string>
 #include <vector>
 #include <utility>
+#include <memory>
 #include <SDL3/SDL.h>
 #include "Point.h"
+#include "Component.h"
 
 struct ComponentPin {
     std::string designation;
@@ -31,8 +33,20 @@ public:
     float worldHeight{48.0f};
     std::vector<ComponentPin> pins;
 
+    // Object-Oriented base component representation (Section 6 Polymorphism Requirement)
+    std::shared_ptr<Component> coreComponent;
+
     ComponentInstance(std::string typeName, std::string id, std::string val, Point worldLocation)
             : type(std::move(typeName)), labelId(std::move(id)), valueStr(std::move(val)), worldPos(worldLocation) {
+
+        // Instantiate appropriate derived polymorphic object class context
+        if (type == "Ground") coreComponent = std::make_shared<GroundComponent>();
+        else if (type == "DC Source") coreComponent = std::make_shared<DcSourceComponent>();
+        else if (type == "Battery") coreComponent = std::make_shared<BatteryComponent>();
+        else if (type == "Clock Generator") coreComponent = std::make_shared<ClockGeneratorComponent>();
+        else if (type == "Resistor") coreComponent = std::make_shared<ResistorComponent>();
+        else if (type == "Capacitor") coreComponent = std::make_shared<CapacitorComponent>();
+        else if (type == "Inductor") coreComponent = std::make_shared<InductorComponent>();
 
         if (type == "Flip-Flop" || type == "Oscilloscope") {
             worldWidth = 80.0f; worldHeight = 60.0f;
@@ -40,7 +54,7 @@ public:
             worldWidth = 80.0f; worldHeight = 50.0f;
         } else if (type == "Resistor" || type == "Capacitor" || type == "Diode" || type == "Inductor") {
             worldWidth = 64.0f; worldHeight = 32.0f;
-        } else if (type == "DC Source" || type == "AC Source" || type == "Voltmeter" || type == "Ammeter") {
+        } else if (type == "DC Source" || type == "AC Source" || type == "Voltmeter" || type == "Ammeter" || type == "Battery" || type == "Clock Generator") {
             worldWidth = 40.0f; worldHeight = 60.0f;
         } else if (type == "Ground") {
             worldWidth = 32.0f; worldHeight = 32.0f;
@@ -68,7 +82,7 @@ public:
             pins.push_back({"K", {-35.0f, 10.0f}, {0.0f, 0.0f}});
             pins.push_back({"Q", {35.0f, -10.0f}, {0.0f, 0.0f}});
             pins.push_back({"~Q", {35.0f, 10.0f}, {0.0f, 0.0f}});
-        } else if (type == "DC Source" || type == "AC Source" || type == "Voltmeter" || type == "Ammeter") {
+        } else if (type == "DC Source" || type == "AC Source" || type == "Voltmeter" || type == "Ammeter" || type == "Battery" || type == "Clock Generator") {
             pins.push_back({"+", {0.0f, -30.0f}, {0.0f, 0.0f}});
             pins.push_back({"-", {0.0f, 30.0f}, {0.0f, 0.0f}});
         } else if (type == "Oscilloscope") {

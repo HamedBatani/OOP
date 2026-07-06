@@ -151,7 +151,6 @@ void CanvasRenderer::renderSDL(SDL_Renderer* renderer, TTF_Font* font, int windo
     }
 }
 
-// تابع کمکی اختصاصی برای رسم دایره‌های توپر (مخصوص گره‌های اتصال)
 void CanvasRenderer::fillScreenCircle(SDL_Renderer* renderer, float cx, float cy, float r, SDL_Color c) const {
     const int segments = 24;
     std::vector<SDL_Vertex> v;
@@ -164,25 +163,20 @@ void CanvasRenderer::fillScreenCircle(SDL_Renderer* renderer, float cx, float cy
     }
     SDL_RenderGeometry(renderer, nullptr, v.data(), v.size(), nullptr, 0);
 }
-// -------------------------------------------------------------------------
-// تابع رندر سیم‌های مدار (Wire Rendering) طبق بند ۲.۵، ۳.۵ و ۵.۵ مستندات
-// -------------------------------------------------------------------------
+
 void CanvasRenderer::renderWiresSDL(SDL_Renderer* renderer, const std::vector<Wire>& wires) const {
     if (!renderer) return;
 
     for (const auto& wire : wires) {
         if (wire.routingPoints.size() < 2) continue;
 
-        // رنگ آبی برای سیم‌های انتخاب شده (Select)، رنگ سبز تیره مهندسی برای حالت عادی
         SDL_Color wireColor = wire.isSelected ? SDL_Color{0, 120, 215, 255} : SDL_Color{10, 110, 40, 255};
         SDL_SetRenderDrawColor(renderer, wireColor.r, wireColor.g, wireColor.b, wireColor.a);
 
-        // رسم خطوط 90 درجه (Orthogonal)
         for (size_t i = 0; i < wire.routingPoints.size() - 1; ++i) {
             Point p1 = canvas_.worldToScreen(wire.routingPoints[i]);
             Point p2 = canvas_.worldToScreen(wire.routingPoints[i + 1]);
 
-            // ضخامت سیم (Anti-aliasing دستی با 3 خط موازی)
             SDL_RenderLine(renderer, p1.x - 1, p1.y, p2.x - 1, p2.y);
             SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
             SDL_RenderLine(renderer, p1.x + 1, p1.y, p2.x + 1, p2.y);
@@ -190,7 +184,6 @@ void CanvasRenderer::renderWiresSDL(SDL_Renderer* renderer, const std::vector<Wi
             SDL_RenderLine(renderer, p1.x, p1.y + 1, p2.x, p2.y + 1);
         }
 
-        // رسم گره اتصال (Junction Dot) در صورت تکمیل سیم‌کشی
         if (wire.isCompleted) {
             Point pEnd = canvas_.worldToScreen(wire.routingPoints.back());
             fillScreenCircle(renderer, pEnd.x, pEnd.y, 4.0f, wireColor);
@@ -199,11 +192,6 @@ void CanvasRenderer::renderWiresSDL(SDL_Renderer* renderer, const std::vector<Wi
             fillScreenCircle(renderer, pStart.x, pStart.y, 4.0f, wireColor);
         }
 
-        // -------------------------------------------------------------
-        // بخش جدید: هایلایت بصری نوک‌های آزاد (Free anchor) با رنگ نارنجی
-        // تا کاربر متوجه شود این نقاط قابل گرفتن و کشیدن دوباره هستند
-        // (حل درخواست اول کاربر در گفتگو: امکان گرفتن دوباره‌ی نوک آزاد)
-        // -------------------------------------------------------------
         SDL_Color freeEndpointColor{255, 140, 0, 255};
         if (wire.startAnchor.isFree() && !wire.routingPoints.empty()) {
             Point pFreeStart = canvas_.worldToScreen(wire.routingPoints.front());
@@ -215,7 +203,6 @@ void CanvasRenderer::renderWiresSDL(SDL_Renderer* renderer, const std::vector<Wi
         }
     }
 }
-
 
 void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font, const std::vector<ComponentInstance>& components) const {
     if (!renderer) return;
@@ -372,6 +359,31 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
                     SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
                 }
             }
+        }
+        else if (comp.type == "Battery") {
+            // --- Section 1.6 Battery Core Viewport Draw Layout
+            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+            drawTransformedLine(-20, 0, -8, 0);
+            drawTransformedLine(8, 0, 20, 0);
+            drawTransformedLine(-8, -15, -8, 15);
+            drawTransformedLine(-3, -8, -3, 8);
+            drawTransformedLine(2, -15, 2, 15);
+            drawTransformedLine(7, -8, 7, 8);
+        }
+        else if (comp.type == "Clock Generator") {
+            // --- Section 1.6 Pulse Generator Core Viewport Draw Layout
+            fillCircleLocal(0, 0, 16, fillColor);
+            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+            drawTransformedCircle(0, 0, 16);
+            drawTransformedLine(-30, 0, -16, 0);
+            drawTransformedLine(16, 0, 30, 0);
+            drawTransformedLine(-10, 4, -5, 4);
+            drawTransformedLine(-5, 4, -5, -4);
+            drawTransformedLine(-5, -4, 0, -4);
+            drawTransformedLine(0, -4, 0, 4);
+            drawTransformedLine(0, 4, 5, 4);
+            drawTransformedLine(5, 4, 5, -4);
+            drawTransformedLine(5, -4, 10, -4);
         }
         else if (comp.type == "Diode") {
             fillTriangleLocal(-12, -12, -12, 12, 12, 0, fillColor);

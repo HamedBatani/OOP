@@ -9,3 +9,7 @@
 75	758	8043781354846184	CMakeFiles/OOP.dir/src/StatusBar.cpp.obj	cdebfcf95c842abd
 8	558	8049765910673789	CMakeFiles/OOP.dir/src/Toolbar.cpp.obj	d0908f66570a53df
 11	911	8049765914214481	CMakeFiles/OOP.dir/src/ComponentLibrary.cpp.obj	6fb67ecf4e06ed84
+297	3164	8050713161018787	CMakeFiles/OOP.dir/src/CanvasRenderer.cpp.obj	5373da63138a3930
+304	3290	8050713162287023	CMakeFiles/OOP.dir/src/ComponentLibrary.cpp.obj	6fb67ecf4e06ed84
+8	4931	8050713178617738	CMakeFiles/OOP.dir/src/main.cpp.obj	e426bee7899534e8
+4931	6432	8050713193579486	OOP.exe	4fb52f9ecaed383
