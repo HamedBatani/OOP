@@ -127,7 +127,6 @@ int main(int, char**) {
     Point dragStartWorldMouse{0.0f, 0.0f};
 
     bool isWireModeActive = false;
-
     bool isWiring = false;
     Point wiringStartPoint{0.0f, 0.0f};
     std::string activeWiringCompId = "";
@@ -272,6 +271,17 @@ int main(int, char**) {
                             if (!editLabelBuf.empty() && editingComponentIndex >= 0) {
                                 placedComponents[editingComponentIndex].labelId = editLabelBuf;
                                 placedComponents[editingComponentIndex].valueStr = editValueBuf;
+
+                                // Context state assignments parsing rules
+                                if (placedComponents[editingComponentIndex].type == "Colored LED") {
+                                    if (editValueBuf == "Green" || editValueBuf == "green") placedComponents[editingComponentIndex].ledColorMode = 1;
+                                    else if (editValueBuf == "Blue" || editValueBuf == "blue") placedComponents[editingComponentIndex].ledColorMode = 2;
+                                    else placedComponents[editingComponentIndex].ledColorMode = 0;
+                                }
+                                else if (placedComponents[editingComponentIndex].type == "7-Segment Display") {
+                                    try { placedComponents[editingComponentIndex].activeSevenSegmentByte = static_cast<uint8_t>(std::stoul(editValueBuf, nullptr, 16)); }
+                                    catch (...) { placedComponents[editingComponentIndex].activeSevenSegmentByte = 0x5B; } // Renders digit '2'
+                                }
                             }
                             isPropertiesDialogOpen = false;
                         } else if (event.key.key == SDLK_ESCAPE) {
@@ -340,6 +350,13 @@ int main(int, char**) {
                         } else if (event.button.button == SDL_BUTTON_RIGHT) isContextMenuOpen = false;
                     }
                     if (event.type != SDL_EVENT_MOUSE_MOTION) continue;
+                }
+
+                // Push Button release tracker hook (Section 3.6 Requirement)
+                if (event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_LEFT) {
+                    for (auto& comp : placedComponents) {
+                        if (comp.type == "Push Button") comp.interactiveStateBool = false;
+                    }
                 }
 
                 if (event.type == SDL_EVENT_KEY_DOWN) {
@@ -512,7 +529,6 @@ int main(int, char**) {
                     else if (event.type == SDL_EVENT_MOUSE_WHEEL) {
                         if (event.wheel.y > 0) canvas->zoomBy(1.1f);
                         else if (event.wheel.y < 0) canvas->zoomBy(0.9f);
-
                         Point currentWorldMouse = canvas->mouseWorldPosition();
                         float sensitivity = 10.0f / canvas->zoom();
                         for (auto& comp : placedComponents) comp.checkPinHover(currentWorldMouse, sensitivity);
@@ -561,7 +577,7 @@ int main(int, char**) {
                                     }
 
                                     if (validConnection && activeWiringCompId == eComp && activeWiringPinName == ePin) {
-                                        // Ignore origin pin click loop
+                                        // Origin loop protection skip
                                     } else {
                                         Wire& newWire = circuitWires.back();
                                         if (validConnection) {
@@ -608,17 +624,18 @@ int main(int, char**) {
 
                                 if (selectedComponent != "None" && !selectedComponent.empty()) {
                                     Point worldTarget = canvas->snapToGrid(canvas->mouseWorldPosition());
-
-                                    // Custom naming mapping layout prefixes for Section 1.6 devices
                                     std::string prefixStr = "U";
                                     if (selectedComponent == "Ground") prefixStr = "GND";
                                     else if (selectedComponent == "Battery") prefixStr = "B";
                                     else if (selectedComponent == "Clock Generator") prefixStr = "CLK";
+                                    else if (selectedComponent == "Switch") prefixStr = "SW";
+                                    else if (selectedComponent == "Push Button") prefixStr = "PB";
+                                    else if (selectedComponent == "Colored LED") prefixStr = "LED";
+                                    else if (selectedComponent == "7-Segment Display") prefixStr = "SEG";
                                     else {
                                         char prefix = std::toupper(selectedComponent[0]);
                                         prefixStr = std::string(1, prefix);
                                     }
-
                                     componentCounters[prefixStr]++;
                                     std::string finalId = prefixStr + std::to_string(componentCounters[prefixStr]);
                                     placedComponents.emplace_back(selectedComponent, finalId, "", worldTarget);
@@ -635,7 +652,14 @@ int main(int, char**) {
                                     }
 
                                     if (hitCompDetected) {
-                                        if (event.button.clicks == 2) {
+                                        // Component interaction logic handling paths (Section 3.6 Requirement)
+                                        if (placedComponents[hitCompIndex].type == "Switch") {
+                                            placedComponents[hitCompIndex].interactiveStateBool = !placedComponents[hitCompIndex].interactiveStateBool;
+                                        }
+                                        else if (placedComponents[hitCompIndex].type == "Push Button") {
+                                            placedComponents[hitCompIndex].interactiveStateBool = true;
+                                        }
+                                        else if (event.button.clicks == 2) {
                                             isPropertiesDialogOpen = true; editingComponentIndex = hitCompIndex;
                                             editLabelBuf = placedComponents[hitCompIndex].labelId; editValueBuf = placedComponents[hitCompIndex].valueStr;
                                             activeEditField = 0; isDraggingComponents = false;
@@ -656,16 +680,15 @@ int main(int, char**) {
 
                                         for (int i = static_cast<int>(circuitWires.size()) - 1; i >= 0; --i) {
                                             Wire& w = circuitWires[i]; if (w.routingPoints.empty()) continue;
-
                                             if (w.startAnchor.isFree()) {
-                                                Point sp = w.routingPoints.front();
-                                                if (sp.distanceTo(worldMouse) <= endpointSensitivity) {
+                                                Point pFreeStart = w.routingPoints.front();
+                                                if (pFreeStart.distanceTo(worldMouse) <= endpointSensitivity) {
                                                     hitFreeEndpoint = true; hitEndpointWireIndex = i; hitEndpointIsStart = true; break;
                                                 }
                                             }
                                             if (w.endAnchor.isFree()) {
-                                                Point ep = w.routingPoints.back();
-                                                if (ep.distanceTo(worldMouse) <= endpointSensitivity) {
+                                                Point pFreeEnd = w.routingPoints.back();
+                                                if (pFreeEnd.distanceTo(worldMouse) <= endpointSensitivity) {
                                                     hitFreeEndpoint = true; hitEndpointWireIndex = i; hitEndpointIsStart = false; break;
                                                 }
                                             }
@@ -696,10 +719,8 @@ int main(int, char**) {
                                                 for (auto& w : circuitWires) w.isSelected = false;
                                             }
                                             circuitWires[hitWireIndex].isSelected = true;
-
                                             if (circuitWires[hitWireIndex].isFullyFree()) {
-                                                isDraggingWire = true; draggingWireIndex = hitWireIndex;
-                                                wireDragStartWorldMouse = worldMouse; wireDragStartRoutingPoints = circuitWires[hitWireIndex].routingPoints;
+                                                isDraggingWire = true; draggingWireIndex = hitWireIndex; wireDragStartWorldMouse = worldMouse; wireDragStartRoutingPoints = circuitWires[hitWireIndex].routingPoints;
                                             }
                                         }
                                         else {
@@ -870,14 +891,15 @@ int main(int, char**) {
                         std::string dispLabel = editLabelBuf; if (activeEditField == 0 && (SDL_GetTicks() / 500) % 2 == 0) dispLabel += "_";
                         renderText(renderer, font, dispLabel, labelBoxRect.x + 8.0f, labelBoxRect.y + 4.0f, {255, 255, 255, 255}, false);
 
-                        // Modal titles dynamically mapped as specified for Section 1.6 Device properties
+                        // Context text layout prompt selector matching sections 3.6 and 4.6
                         std::string valPrompt = "Technical Value Specification:";
                         if (comp.type == "Resistor") valPrompt = "Resistance Value (Ohm):";
                         else if (comp.type == "Capacitor") valPrompt = "Capacitance (Farad):";
-                        else if (comp.type == "DC Source") valPrompt = "Source Voltage (Volt):";
+                        else if (comp.type == "DC Source" || comp.type == "AC Source") valPrompt = "Source Voltage (Volt):";
                         else if (comp.type == "Inductor") valPrompt = "Inductance Value (Henry):";
-                        else if (comp.type == "Battery") valPrompt = "Voltage & Internal Resistance (V, Ohm):";
-                        else if (comp.type == "Clock Generator") valPrompt = "Pulse Level & Frequency (V, Hz):";
+                        else if (comp.type == "Colored LED") valPrompt = "LED Visual Glow Color (Red, Green, Blue):";
+                        else if (comp.type == "7-Segment Display") valPrompt = "Active Segment Mask Hex Byte (e.g. 0x4F):";
+                        else if (comp.coreComponent && comp.coreComponent->getComponentClass() == ComponentClass::DigitalLogic) valPrompt = "Propagation Delay Parameter (ns):";
 
                         renderText(renderer, font, valPrompt, dialogRect.x + 20.0f, dialogRect.y + 125.0f, {200, 210, 230, 255}, false);
                         SDL_FRect valBoxRect{ dialogRect.x + 20.0f, dialogRect.y + 152.0f, dialogRect.w - 40.0f, 32.0f };
@@ -900,7 +922,6 @@ int main(int, char**) {
                         SDL_FRect dialogRect{ currentW / 2.0f - 160.0f, currentH / 2.0f - 80.0f, 320.0f, 160.0f };
                         SDL_SetRenderDrawColor(renderer, 45, 55, 75, 255); SDL_RenderFillRect(renderer, &dialogRect);
                         SDL_SetRenderDrawColor(renderer, 100, 110, 130, 255); SDL_RenderRect(renderer, &dialogRect);
-
                         renderText(renderer, font, "Enter Project Name:", currentW / 2.0f, dialogRect.y + 20.0f, {255, 255, 255, 255});
 
                         SDL_FRect inputRect{ dialogRect.x + 20.0f, dialogRect.y + 60.0f, dialogRect.w - 40.0f, 40.0f };
@@ -909,7 +930,6 @@ int main(int, char**) {
 
                         std::string displayText = saveFileName; if ((SDL_GetTicks() / 500) % 2 == 0) displayText += "_";
                         renderText(renderer, font, displayText, inputRect.x + 10.0f, inputRect.y + 8.0f, {200, 210, 230, 255}, false);
-
                         renderText(renderer, font, "Press ENTER to save, ESC to cancel", currentW / 2.0f, dialogRect.y + 120.0f, {150, 160, 180, 255});
                     }
 

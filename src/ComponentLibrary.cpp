@@ -20,10 +20,11 @@ bool ComponentLibrary::containsIgnoreCase(const std::string& text, const std::st
 
 ComponentLibrary::ComponentLibrary(float x, float y, float width, float height)
         : x_(x), y_(y), width_(width), height_(height) {
-    // Aligned perfectly with Section 1.6 & 2.6 Classifications
-    categories_.push_back({"Main Sources", true, {"Ground", "DC Source", "Battery", "Clock Generator"}});
-    categories_.push_back({"Passive Components", true, {"Resistor", "Capacitor", "Inductor"}});
-    categories_.push_back({"Digital & Analog", false, {"Diode", "Op-Amp", "AND Gate", "OR Gate", "NOT Gate", "Flip-Flop"}});
+    // Structured indexing classifications mapping sections 1.6, 2.6, 3.6, and 4.6 specs
+    categories_.push_back({"Main Sources", true, {"Ground", "DC Source", "Battery", "Clock Generator", "AC Source"}});
+    categories_.push_back({"Passive Components", true, {"Resistor", "Capacitor", "Inductor", "Diode", "Op-Amp"}});
+    categories_.push_back({"Interactive & Outputs", false, {"Switch", "Push Button", "Colored LED", "7-Segment Display"}});
+    categories_.push_back({"Digital Logic Gates", false, {"AND Gate", "OR Gate", "NOT Gate", "XOR Gate", "NAND Gate", "Flip-Flop"}});
     categories_.push_back({"Measurement", false, {"Voltmeter", "Ammeter", "Oscilloscope"}});
 }
 
@@ -367,20 +368,14 @@ void ComponentLibrary::renderPreviewBox(SDL_Renderer* renderer, TTF_Font* font, 
 
     if (compName == "Resistor") {
         SDL_FRect body{cx - 16, cy - 8, 32, 16};
-        SDL_SetRenderDrawColor(renderer, fillC.r, fillC.g, fillC.b, 255);
-        SDL_RenderFillRect(renderer, &body);
-        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
-        SDL_RenderRect(renderer, &body);
-        SDL_RenderLine(renderer, cx - 32, cy, cx - 16, cy);
-        SDL_RenderLine(renderer, cx + 16, cy, cx + 32, cy);
+        SDL_SetRenderDrawColor(renderer, fillC.r, fillC.g, fillC.b, 255); SDL_RenderFillRect(renderer, &body);
+        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255); SDL_RenderRect(renderer, &body);
+        SDL_RenderLine(renderer, cx - 32, cy, cx - 16, cy); SDL_RenderLine(renderer, cx + 16, cy, cx + 32, cy);
     }
     else if (compName == "Capacitor") {
-        SDL_FRect plate1{cx - 7, cy - 12, 3, 24}; SDL_FRect plate2{cx + 4, cy - 12, 3, 24};
-        SDL_SetRenderDrawColor(renderer, fillC.r, fillC.g, fillC.b, 255);
-        SDL_RenderFillRect(renderer, &plate1); SDL_RenderFillRect(renderer, &plate2);
-        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
-        SDL_RenderRect(renderer, &plate1); SDL_RenderRect(renderer, &plate2);
-        SDL_RenderLine(renderer, cx - 32, cy, cx - 7, cy); SDL_RenderLine(renderer, cx + 7, cy, cx + 32, cy);
+        SDL_FRect plate1{cx - 6, cy - 12, 3, 24}; SDL_FRect plate2{cx + 3, cy - 12, 3, 24};
+        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255); SDL_RenderFillRect(renderer, &plate1); SDL_RenderFillRect(renderer, &plate2);
+        SDL_RenderLine(renderer, cx - 32, cy, cx - 6, cy); SDL_RenderLine(renderer, cx + 6, cy, cx + 32, cy);
     }
     else if (compName == "Inductor") {
         for(int i = 0; i < 4; ++i) fillSemicirclePreview(-15.0f + (i * 10.0f), 0.0f, 5.0f, PI, 2.0f * PI, fillC);
@@ -394,123 +389,86 @@ void ComponentLibrary::renderPreviewBox(SDL_Renderer* renderer, TTF_Font* font, 
         }
     }
     else if (compName == "Battery") {
-        // --- Render implementation for Section 1.6 Battery -- alternating plate lengths
         SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
-        SDL_RenderLine(renderer, cx - 20, cy, cx - 8, cy);
-        SDL_RenderLine(renderer, cx + 8, cy, cx + 20, cy);
-
-        SDL_RenderLine(renderer, cx - 8, cy - 15, cx - 8, cy + 15); // Long positive plate
-        SDL_RenderLine(renderer, cx - 3, cy - 8, cx - 3, cy + 8);   // Short thick negative plate
-        SDL_RenderLine(renderer, cx + 2, cy - 15, cx + 2, cy + 15); // Long plate
-        SDL_RenderLine(renderer, cx + 7, cy - 8, cx + 7, cy + 8);   // Short thick plate
+        SDL_RenderLine(renderer, cx - 32, cy, cx - 6, cy); SDL_RenderLine(renderer, cx + 6, cy, cx + 32, cy);
+        SDL_RenderLine(renderer, cx - 6, cy - 16, cx - 6, cy + 16); SDL_RenderLine(renderer, cx - 2, cy - 8, cx - 2, cy + 8);
+        SDL_RenderLine(renderer, cx + 2, cy - 16, cx + 2, cy + 16); SDL_RenderLine(renderer, cx + 6, cy - 8, cx + 6, cy + 8);
     }
     else if (compName == "Clock Generator") {
-        // --- Render implementation for Section 1.6 Pulse Clock -- Circle containing square wave shape
-        fillCirclePreview(0, 0, 16, fillC);
+        fillCirclePreview(0, 0, 16, fillC); drawCircle(cx, cy, 16);
         SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
-        drawCircle(cx, cy, 16);
-        SDL_RenderLine(renderer, cx - 28, cy, cx - 16, cy);
-        SDL_RenderLine(renderer, cx + 16, cy, cx + 28, cy);
-
-        // Internal Square Pulse Symbol
-        SDL_RenderLine(renderer, cx - 10, cy + 4, cx - 5, cy + 4);
-        SDL_RenderLine(renderer, cx - 5, cy + 4, cx - 5, cy - 4);
-        SDL_RenderLine(renderer, cx - 5, cy - 4, cx + 0, cy - 4);
-        SDL_RenderLine(renderer, cx + 0, cy - 4, cx + 0, cy + 4);
-        SDL_RenderLine(renderer, cx + 0, cy + 4, cx + 5, cy + 4);
-        SDL_RenderLine(renderer, cx + 5, cy + 4, cx + 5, cy - 4);
-        SDL_RenderLine(renderer, cx + 5, cy - 4, cx + 10, cy - 4);
+        SDL_RenderLine(renderer, cx - 32, cy, cx - 16, cy); SDL_RenderLine(renderer, cx + 16, cy, cx + 32, cy);
+        SDL_RenderLine(renderer, cx - 10, cy + 5, cx - 4, cy + 5); SDL_RenderLine(renderer, cx - 4, cy + 5, cx - 4, cy - 5);
+        SDL_RenderLine(renderer, cx - 4, cy - 5, cx + 4, cy - 5); SDL_RenderLine(renderer, cx + 4, cy - 5, cx + 4, cy + 5);
+        SDL_RenderLine(renderer, cx + 4, cy + 5, cx + 10, cy + 5);
+    }
+    else if (compName == "Switch") {
+        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
+        SDL_RenderLine(renderer, cx - 32, cy, cx - 12, cy); SDL_RenderLine(renderer, cx + 12, cy, cx + 32, cy);
+        fillCirclePreview(-12, 0, 3, {180,40,40,255}); fillCirclePreview(12, 0, 3, {180,40,40,255});
+        SDL_RenderLine(renderer, cx - 12, cy, cx + 10, cy - 12);
+    }
+    else if (compName == "Push Button") {
+        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
+        SDL_RenderLine(renderer, cx - 32, cy, cx - 12, cy); SDL_RenderLine(renderer, cx + 12, cy, cx + 32, cy);
+        fillCirclePreview(-12, 0, 2, {180,40,40,255}); fillCirclePreview(12, 0, 2, {180,40,40,255});
+        SDL_RenderLine(renderer, cx - 16, cy - 8, cx + 16, cy - 8); SDL_RenderLine(renderer, cx, cy - 14, cx, cy - 8);
+    }
+    else if (compName == "Colored LED") {
+        fillTrianglePreview(-10, -12, -10, 12, 10, 0, {255, 100, 100, 255});
+        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
+        SDL_RenderLine(renderer, cx - 32, cy, cx - 10, cy); SDL_RenderLine(renderer, cx + 10, cy, cx + 32, cy);
+        SDL_RenderLine(renderer, cx + 10, cy - 12, cx + 10, cy + 12);
+    }
+    else if (compName == "7-Segment Display") {
+        SDL_FRect frame{cx - 16, cy - 24, 32, 48};
+        SDL_SetRenderDrawColor(renderer, 30, 30, 35, 255); SDL_RenderFillRect(renderer, &frame);
+        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255); SDL_RenderRect(renderer, &frame);
+    }
+    else if (compName == "AND Gate") {
+        SDL_FRect block{cx - 16, cy - 16, 16, 32};
+        SDL_SetRenderDrawColor(renderer, fillC.r, fillC.g, fillC.b, 255); SDL_RenderFillRect(renderer, &block);
+        fillSemicirclePreview(0, 0, 16, -PI/2.0f, PI/2.0f, fillC);
+        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
+        SDL_RenderLine(renderer, cx - 16, cy - 16, cx, cy - 16); SDL_RenderLine(renderer, cx - 16, cy + 16, cx, cy + 16);
+        SDL_RenderLine(renderer, cx - 32, cy - 8, cx - 16, cy - 8); SDL_RenderLine(renderer, cx - 32, cy + 8, cx - 16, cy + 8);
+        SDL_RenderLine(renderer, cx + 16, cy, cx + 32, cy);
+    }
+    else if (compName == "XOR Gate") {
+        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
+        for (float y = -16; y <= 16; y += 1.0f) {
+            float xArc = (y * y) / 32.0f - 16.0f;
+            SDL_RenderPoint(renderer, cx + xArc, cy + y);
+            SDL_RenderPoint(renderer, cx + xArc - 4.0f, cy + y);
+        }
+        SDL_RenderLine(renderer, cx - 32, cy - 8, cx - 14, cy - 8); SDL_RenderLine(renderer, cx - 32, cy + 8, cx - 14, cy + 8);
+        SDL_RenderLine(renderer, cx + 18, cy, cx + 32, cy);
+    }
+    else if (compName == "NAND Gate") {
+        SDL_FRect block{cx - 18, cy - 16, 16, 32};
+        SDL_SetRenderDrawColor(renderer, fillC.r, fillC.g, fillC.b, 255); SDL_RenderFillRect(renderer, &block);
+        fillSemicirclePreview(-2, 0, 16, -PI/2.0f, PI/2.0f, fillC);
+        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
+        drawCircle(cx + 17, cy, 3);
+        SDL_RenderLine(renderer, cx - 32, cy - 8, cx - 18, cy - 8); SDL_RenderLine(renderer, cx - 32, cy + 8, cx - 18, cy + 8);
+        SDL_RenderLine(renderer, cx + 20, cy, cx + 32, cy);
     }
     else if (compName == "Diode") {
         fillTrianglePreview(-12, -12, -12, 12, 12, 0, fillC);
         SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
         SDL_RenderLine(renderer, cx - 32, cy, cx - 12, cy); SDL_RenderLine(renderer, cx + 12, cy, cx + 32, cy);
-        SDL_RenderLine(renderer, cx - 12, cy - 12, cx - 12, cy + 12); SDL_RenderLine(renderer, cx - 12, cy - 12, cx + 12, cy);
-        SDL_RenderLine(renderer, cx - 12, cy + 12, cx + 12, cy); SDL_RenderLine(renderer, cx + 12, cy - 12, cx + 12, cy + 12);
+        SDL_RenderLine(renderer, cx + 12, cy - 12, cx + 12, cy + 12);
     }
     else if (compName == "Op-Amp") {
-        fillTrianglePreview(-15, -20, -15, 20, 20, 0, fillC);
+        fillTrianglePreview(-16, -20, -16, 20, 16, 0, fillC);
         SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
-        SDL_RenderLine(renderer, cx - 15, cy - 20, cx - 15, cy + 20); SDL_RenderLine(renderer, cx - 15, cy - 20, cx + 20, cy);
-        SDL_RenderLine(renderer, cx - 15, cy + 20, cx + 20, cy); SDL_RenderLine(renderer, cx - 35, cy - 8, cx - 15, cy - 8);
-        SDL_RenderLine(renderer, cx - 35, cy + 8, cx - 15, cy + 8); SDL_RenderLine(renderer, cx + 20, cy, cx + 35, cy);
-        SDL_RenderLine(renderer, cx - 12, cy - 10, cx - 6, cy - 10); SDL_RenderLine(renderer, cx - 12, cy + 10, cx - 6, cy + 10);
-        SDL_RenderLine(renderer, cx - 9, cy + 7, cx - 9, cy + 13);
-    }
-    else if (compName == "AND Gate") {
-        SDL_FRect body{cx - 15, cy - 16, 15, 32};
-        SDL_SetRenderDrawColor(renderer, fillC.r, fillC.g, fillC.b, 255); SDL_RenderFillRect(renderer, &body);
-        fillSemicirclePreview(0, 0, 16.0f, -PI / 2.0f, PI / 2.0f, fillC);
-        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
-        SDL_RenderLine(renderer, cx - 35, cy - 8, cx - 15, cy - 8); SDL_RenderLine(renderer, cx - 35, cy + 8, cx - 15, cy + 8);
-        SDL_RenderLine(renderer, cx + 16, cy, cx + 35, cy); SDL_RenderLine(renderer, cx - 15, cy - 16, cx - 15, cy + 16);
-        SDL_RenderLine(renderer, cx - 15, cy - 16, cx, cy - 16); SDL_RenderLine(renderer, cx - 15, cy + 16, cx, cy + 16);
-        for(int j = -6; j < 6; ++j) { float step = PI / 12.0f; SDL_RenderLine(renderer, cx + 16.0f * std::cos(j * step), cy + 16.0f * std::sin(j * step), cx + 16.0f * std::cos((j+1) * step), cy + 16.0f * std::sin((j+1) * step)); }
-    }
-    else if (compName == "OR Gate") {
-        fillTrianglePreview(-15, -20, -5, 0, 5, -15, fillC); fillTrianglePreview(-5, 0, 25, 0, 5, -15, fillC);
-        fillTrianglePreview(-5, 0, 5, 15, 25, 0, fillC); fillTrianglePreview(-15, 20, 5, 15, -5, 0, fillC);
-        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
-        SDL_RenderLine(renderer, cx - 35, cy - 8, cx - 10, cy - 8); SDL_RenderLine(renderer, cx - 35, cy + 8, cx - 10, cy + 8);
-        SDL_RenderLine(renderer, cx + 25, cy, cx + 35, cy); SDL_RenderLine(renderer, cx - 15, cy - 20, cx - 5, cy);
-        SDL_RenderLine(renderer, cx - 5, cy, cx - 15, cy + 20); SDL_RenderLine(renderer, cx - 15, cy - 20, cx + 5, cy - 15);
-        SDL_RenderLine(renderer, cx + 5, cy - 15, cx + 25, cy); SDL_RenderLine(renderer, cx - 15, cy + 20, cx + 5, cy + 15);
-        SDL_RenderLine(renderer, cx + 5, cy + 15, cx + 25, cy);
-    }
-    else if (compName == "NOT Gate") {
-        fillTrianglePreview(-15, -15, -15, 15, 5, 0, fillC); fillCirclePreview(10, 0, 5, fillC);
-        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
-        SDL_RenderLine(renderer, cx - 35, cy, cx - 15, cy); SDL_RenderLine(renderer, cx + 15, cy, cx + 35, cy);
-        SDL_RenderLine(renderer, cx - 15, cy - 15, cx - 15, cy + 15); SDL_RenderLine(renderer, cx - 15, cy - 15, cx + 5, cy);
-        SDL_RenderLine(renderer, cx - 15, cy + 15, cx + 5, cy); drawCircle(cx + 10, cy, 5);
-    }
-    else if (compName == "Flip-Flop") {
-        SDL_FRect body{cx - 20, cy - 25, 40, 50};
-        SDL_SetRenderDrawColor(renderer, fillC.r, fillC.g, fillC.b, 255); SDL_RenderFillRect(renderer, &body);
-        fillCirclePreview(24, 10, 4, fillC);
-        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255); SDL_RenderRect(renderer, &body);
-        SDL_RenderLine(renderer, cx - 40, cy - 10, cx - 20, cy - 10); SDL_RenderLine(renderer, cx - 40, cy + 10, cx - 20, cy + 10);
-        SDL_RenderLine(renderer, cx + 20, cy - 10, cx + 40, cy - 10); SDL_RenderLine(renderer, cx + 20, cy + 10, cx + 40, cy + 10);
-        SDL_RenderLine(renderer, cx - 20, cy + 5, cx - 12, cy + 10); SDL_RenderLine(renderer, cx - 12, cy + 10, cx - 20, cy + 15);
-        drawCircle(cx + 24, cy + 10, 4);
-    }
-    else if (compName == "DC Source") {
-        fillCirclePreview(0, 0, 20, fillC);
-        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255); drawCircle(cx, cy, 20);
-        SDL_RenderLine(renderer, cx, cy - 30, cx, cy - 20); SDL_RenderLine(renderer, cx, cy + 20, cx, cy + 30);
-        SDL_RenderLine(renderer, cx - 12, cy - 8, cx + 12, cy - 8); SDL_RenderLine(renderer, cx - 6, cy + 8, cx + 6, cy + 8);
-        SDL_RenderLine(renderer, cx - 12, cy - 16, cx - 6, cy - 16); SDL_RenderLine(renderer, cx - 9, cy - 19, cx - 9, cy - 13);
-    }
-    else if (compName == "AC Source") {
-        fillCirclePreview(0, 0, 15, fillC);
-        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255); drawCircle(cx, cy, 15);
-        SDL_RenderLine(renderer, cx, cy - 30, cx, cy - 15); SDL_RenderLine(renderer, cx, cy + 15, cx, cy + 30);
-        for(float x = -8; x <= 8; x += 1.0f) { float y1 = std::sin(x * PI / 8.0f) * 5.0f; float y2 = std::sin((x+1) * PI / 8.0f) * 5.0f; SDL_RenderLine(renderer, cx + x, cy - y1, cx + x + 1, cy - y2); }
-    }
-    else if (compName == "Voltmeter" || compName == "Ammeter") {
-        fillCirclePreview(0, 0, 15, fillC);
-        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255); drawCircle(cx, cy, 15);
-        SDL_RenderLine(renderer, cx, cy - 30, cx, cy - 15); SDL_RenderLine(renderer, cx, cy + 15, cx, cy + 30);
-        if(compName == "Voltmeter") { SDL_RenderLine(renderer, cx - 5, cy - 5, cx, cy + 5); SDL_RenderLine(renderer, cx, cy + 5, cx + 5, cy - 5); }
-        else { SDL_RenderLine(renderer, cx, cy - 6, cx - 5, cy + 5); SDL_RenderLine(renderer, cx, cy - 6, cx + 5, cy + 5); SDL_RenderLine(renderer, cx - 3, cy + 2, cx + 3, cy + 2); }
-    }
-    else if (compName == "Oscilloscope") {
-        SDL_FRect outer{cx - 25, cy - 20, 50, 40}; SDL_FRect screen{cx - 20, cy - 15, 30, 30};
-        SDL_SetRenderDrawColor(renderer, fillC.r, fillC.g, fillC.b, 255); SDL_RenderFillRect(renderer, &outer);
-        SDL_SetRenderDrawColor(renderer, fillC.r*0.9f, fillC.g*0.9f, fillC.b*0.9f, 255); SDL_RenderFillRect(renderer, &screen);
-        fillCirclePreview(17, -5, 3, fillC); fillCirclePreview(17, 5, 3, fillC);
-        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255); SDL_RenderRect(renderer, &outer); SDL_RenderRect(renderer, &screen);
-        drawCircle(cx + 17, cy - 5, 3); drawCircle(cx + 17, cy + 5, 3);
-        for(float x = -18; x <= 8; x += 1.0f) { float y1 = std::sin((x+18) * PI / 6.0f) * 8.0f; float y2 = std::sin((x+19) * PI / 6.0f) * 8.0f; SDL_RenderLine(renderer, cx + x, cy - y1, cx + x + 1, cy - y2); }
-    }
-    else if (compName == "Ground") {
-        SDL_RenderLine(renderer, cx, cy - 15, cx, cy); SDL_RenderLine(renderer, cx - 12, cy, cx + 12, cy);
-        SDL_RenderLine(renderer, cx - 8, cy + 4, cx + 8, cy + 4); SDL_RenderLine(renderer, cx - 4, cy + 8, cx + 4, cy + 8);
+        SDL_RenderLine(renderer, cx - 32, cy - 8, cx - 16, cy - 8); SDL_RenderLine(renderer, cx - 32, cy + 8, cx - 16, cy + 8);
+        SDL_RenderLine(renderer, cx + 16, cy, cx + 32, cy);
     }
     else {
-        SDL_FRect body{cx - 20, cy - 15, 40, 30};
-        SDL_SetRenderDrawColor(renderer, fillC.r, fillC.g, fillC.b, 255); SDL_RenderFillRect(renderer, &body);
-        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255); SDL_RenderRect(renderer, &body);
-        SDL_RenderLine(renderer, cx - 35, cy, cx - 20, cy); SDL_RenderLine(renderer, cx + 20, cy, cx + 35, cy);
+        SDL_FRect genericBox{cx - 16, cy - 12, 32, 24};
+        SDL_SetRenderDrawColor(renderer, fillC.r, fillC.g, fillC.b, 255); SDL_RenderFillRect(renderer, &genericBox);
+        SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255); SDL_RenderRect(renderer, &genericBox);
+        SDL_RenderLine(renderer, cx - 32, cy, cx - 16, cy); SDL_RenderLine(renderer, cx + 16, cy, cx + 32, cy);
     }
 }

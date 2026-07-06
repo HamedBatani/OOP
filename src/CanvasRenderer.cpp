@@ -67,7 +67,6 @@ void CanvasRenderer::renderGridPreview(std::ostream& output, int columns, int ro
 void CanvasRenderer::renderSnapTest(std::ostream& output, const Point& rawMouseScreenPoint) const {
     const Point rawWorldPoint = canvas_.screenToWorld(rawMouseScreenPoint);
     const Point snappedWorldPoint = canvas_.snapToGrid(rawWorldPoint);
-    const Point snappedScreenPoint = canvas_.worldToScreen(snappedWorldPoint);
 
     output << "Snap To Grid Test\n-----------------\nRaw Mouse Screen: ";
     printPoint(output, rawMouseScreenPoint);
@@ -187,7 +186,6 @@ void CanvasRenderer::renderWiresSDL(SDL_Renderer* renderer, const std::vector<Wi
         if (wire.isCompleted) {
             Point pEnd = canvas_.worldToScreen(wire.routingPoints.back());
             fillScreenCircle(renderer, pEnd.x, pEnd.y, 4.0f, wireColor);
-
             Point pStart = canvas_.worldToScreen(wire.routingPoints.front());
             fillScreenCircle(renderer, pStart.x, pStart.y, 4.0f, wireColor);
         }
@@ -316,11 +314,6 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
                 SDL_SetRenderDrawColor(renderer, 220, 50, 50, 255);
                 SDL_FRect pinRect{pinScreen.x - 3.5f, pinScreen.y - 3.5f, 7.0f, 7.0f};
                 SDL_RenderFillRect(renderer, &pinRect);
-                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-                SDL_SetRenderDrawColor(renderer, 220, 50, 50, 100);
-                SDL_FRect outerRect{pinScreen.x - 7.0f, pinScreen.y - 7.0f, 14.0f, 14.0f};
-                SDL_RenderFillRect(renderer, &outerRect);
-                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
             } else {
                 SDL_SetRenderDrawColor(renderer, 100, 100, 110, 255);
                 SDL_FRect pinRect{pinScreen.x - 2.5f, pinScreen.y - 2.5f, 5.0f, 5.0f};
@@ -330,6 +323,7 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
 
         SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
 
+        // --- PRISTINE HIGH-FIDELITY SCHEMATIC PATH BLUEPRINTS ---
         if (comp.type == "Resistor") {
             fillRectLocal(-16, -8, 32, 16, fillColor);
             SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
@@ -338,14 +332,9 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
             drawTransformedLine(16, 8, -16, 8); drawTransformedLine(-16, 8, -16, -8);
         }
         else if (comp.type == "Capacitor") {
-            fillRectLocal(-7, -12, 3, 24, fillColor);
-            fillRectLocal(4, -12, 3, 24, fillColor);
+            fillRectLocal(-6, -12, 3, 24, strokeColor); fillRectLocal(3, -12, 3, 24, strokeColor);
             SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
-            drawTransformedLine(-32, 0, -7, 0); drawTransformedLine(7, 0, 32, 0);
-            drawTransformedLine(-7, -12, -4, -12); drawTransformedLine(-7, 12, -4, 12);
-            drawTransformedLine(-7, -12, -7, 12); drawTransformedLine(-4, -12, -4, 12);
-            drawTransformedLine(4, -12, 7, -12); drawTransformedLine(4, 12, 7, 12);
-            drawTransformedLine(4, -12, 4, 12); drawTransformedLine(7, -12, 7, 12);
+            drawTransformedLine(-32, 0, -6, 0); drawTransformedLine(6, 0, 32, 0);
         }
         else if (comp.type == "Inductor") {
             for(int i = 0; i < 4; ++i) fillSemicircleLocal(-15.0f + (i * 10.0f), 0.0f, 5.0f, PI, 2.0f * PI, fillColor);
@@ -361,29 +350,105 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
             }
         }
         else if (comp.type == "Battery") {
-            // --- Section 1.6 Battery Core Viewport Draw Layout
             SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
-            drawTransformedLine(-20, 0, -8, 0);
-            drawTransformedLine(8, 0, 20, 0);
-            drawTransformedLine(-8, -15, -8, 15);
-            drawTransformedLine(-3, -8, -3, 8);
-            drawTransformedLine(2, -15, 2, 15);
-            drawTransformedLine(7, -8, 7, 8);
+            drawTransformedLine(-20, 0, -6, 0); drawTransformedLine(6, 0, 20, 0);
+            drawTransformedLine(-6, -16, -6, 16); drawTransformedLine(-2, -8, -2, 8);
+            drawTransformedLine(2, -16, 2, 16); drawTransformedLine(6, -8, 6, 8);
         }
         else if (comp.type == "Clock Generator") {
-            // --- Section 1.6 Pulse Generator Core Viewport Draw Layout
             fillCircleLocal(0, 0, 16, fillColor);
             SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
             drawTransformedCircle(0, 0, 16);
-            drawTransformedLine(-30, 0, -16, 0);
-            drawTransformedLine(16, 0, 30, 0);
-            drawTransformedLine(-10, 4, -5, 4);
-            drawTransformedLine(-5, 4, -5, -4);
-            drawTransformedLine(-5, -4, 0, -4);
-            drawTransformedLine(0, -4, 0, 4);
-            drawTransformedLine(0, 4, 5, 4);
-            drawTransformedLine(5, 4, 5, -4);
-            drawTransformedLine(5, -4, 10, -4);
+            drawTransformedLine(-30, 0, -16, 0); drawTransformedLine(16, 0, 30, 0);
+            drawTransformedLine(-10, 5, -4, 5); drawTransformedLine(-4, 5, -4, -5);
+            drawTransformedLine(-4, -5, 4, -5); drawTransformedLine(4, -5, 4, 5); drawTransformedLine(4, 5, 10, 5);
+        }
+        else if (comp.type == "Switch") {
+            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+            drawTransformedLine(-32, 0, -12, 0); drawTransformedLine(12, 0, 32, 0);
+            fillCircleLocal(-12, 0, 3, strokeColor); fillCircleLocal(12, 0, 3, strokeColor);
+            if (comp.interactiveStateBool) drawTransformedLine(-12, 0, 12, 0);
+            else drawTransformedLine(-12, 0, 10, -12);
+        }
+        else if (comp.type == "Push Button") {
+            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+            drawTransformedLine(-32, 0, -12, 0); drawTransformedLine(12, 0, 32, 0);
+            fillCircleLocal(-12, 0, 2, strokeColor); fillCircleLocal(12, 0, 2, strokeColor);
+            float btnY = comp.interactiveStateBool ? -2.0f : -8.0f;
+            drawTransformedLine(-16, btnY, 16, btnY); drawTransformedLine(0, btnY - 6.0f, 0, btnY);
+            fillRectLocal(-6, btnY - 8.0f, 12, 2, strokeColor);
+        }
+        else if (comp.type == "Colored LED") {
+            SDL_Color activeColor = {210, 210, 215, 255};
+            if (comp.interactiveStateBool) {
+                if (comp.ledColorMode == 0) activeColor = {255, 40, 40, 255};
+                else if (comp.ledColorMode == 1) activeColor = {40, 255, 40, 255};
+                else activeColor = {40, 120, 255, 255};
+            }
+            fillTriangleLocal(-12, -12, -12, 12, 12, 0, activeColor);
+            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+            drawTransformedLine(-32, 0, -12, 0); drawTransformedLine(12, 0, 32, 0);
+            drawTransformedLine(12, -12, 12, 12);
+        }
+        else if (comp.type == "7-Segment Display") {
+            fillRectLocal(-20, -32, 40, 64, {32, 32, 36, 255});
+            SDL_SetRenderDrawColor(renderer, 60, 65, 70, 255);
+            drawTransformedLine(-20, -32, 20, -32); drawTransformedLine(20, -32, 20, 64);
+            drawTransformedLine(20, 64, -20, 64); drawTransformedLine(-20, 64, -20, -32);
+            SDL_Color glow = {255, 30, 30, 255}, off = {55, 50, 50, 255};
+            fillRectLocal(-10, -24, 20, 3, (comp.activeSevenSegmentByte & 0x01) ? glow : off);
+            fillRectLocal(10, -24, 3, 22, (comp.activeSevenSegmentByte & 0x02) ? glow : off);
+            fillRectLocal(10, 2, 3, 22, (comp.activeSevenSegmentByte & 0x04) ? glow : off);
+            fillRectLocal(-10, 24, 20, 3, (comp.activeSevenSegmentByte & 0x08) ? glow : off);
+            fillRectLocal(-13, 2, 3, 22, (comp.activeSevenSegmentByte & 0x10) ? glow : off);
+            fillRectLocal(-13, -24, 3, 22, (comp.activeSevenSegmentByte & 0x20) ? glow : off);
+            fillRectLocal(-10, 0, 20, 3, (comp.activeSevenSegmentByte & 0x40) ? glow : off);
+            fillCircleLocal(14, 24, 2.5f, (comp.activeSevenSegmentByte & 0x80) ? glow : off);
+        }
+        else if (comp.type == "AND Gate" || comp.type == "NAND Gate") {
+            fillRectLocal(-20, -16, 20, 32, fillColor);
+            fillSemicircleLocal(0, 0, 16.0f, -PI/2.0f, PI/2.0f, fillColor);
+            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+            drawTransformedLine(-15, -16, -15, 16); drawTransformedLine(-15, -16, 0, -16); drawTransformedLine(-15, 16, 0, 16);
+            drawTransformedLine(-40, -10, -20, -10); drawTransformedLine(-40, 10, -20, 10);
+            if (comp.type == "NAND Gate") { drawTransformedCircle(19, 0, 3); drawTransformedLine(22, 0, 40, 0); }
+            else { drawTransformedLine(16, 0, 40, 0); }
+            for(int j = -6; j < 6; ++j) {
+                float step = PI / 12.0f;
+                Point p1 = transformLocal(16.0f * std::cos(j * step), 16.0f * std::sin(j * step));
+                Point p2 = transformLocal(16.0f * std::cos((j+1) * step), 16.0f * std::sin((j+1) * step));
+                SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
+            }
+        }
+        else if (comp.type == "OR Gate" || comp.type == "XOR Gate") {
+            fillTriangleLocal(-20, -20, -10, 0, 0, -15, fillColor); fillTriangleLocal(-10, 0, 20, 0, 0, -15, fillColor);
+            fillTriangleLocal(-10, 0, 0, 15, 20, 0, fillColor); fillTriangleLocal(-20, 20, 0, 15, -10, 0, fillColor);
+            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+            drawTransformedLine(-40, -10, -14, -10); drawTransformedLine(-40, 10, -14, 10); drawTransformedLine(20, 0, 40, 0);
+            drawTransformedLine(-20, -20, -10, 0); drawTransformedLine(-10, 0, -20, 20); drawTransformedLine(-20, -20, 0, -15);
+            drawTransformedLine(0, -15, 20, 0); drawTransformedLine(-20, 20, 0, 15); drawTransformedLine(0, 15, 20, 0);
+            if (comp.type == "XOR Gate") {
+                for (float y = -18; y <= 18; y += 2.0f) {
+                    Point pt = transformLocal((y * y) / 32.0f - 24.0f, y);
+                    fillScreenCircle(renderer, pt.x, pt.y, 1.2f, strokeColor);
+                }
+            }
+        }
+        else if (comp.type == "NOT Gate") {
+            fillTriangleLocal(-15, -15, -15, 15, 5, 0, fillColor);
+            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+            drawTransformedLine(-40, 0, -15, 0); drawTransformedLine(-15, -15, -15, 15);
+            drawTransformedLine(-15, -15, 5, 0); drawTransformedLine(-15, 15, 5, 0);
+            drawTransformedCircle(8, 0, 3); drawTransformedLine(11, 0, 40, 0);
+        }
+        else if (comp.type == "Flip-Flop") {
+            fillRectLocal(-20, -25, 40, 50, fillColor);
+            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+            drawTransformedLine(-20, -25, 20, -25); drawTransformedLine(20, -25, 20, 25);
+            drawTransformedLine(20, 25, -20, 25); drawTransformedLine(-20, 25, -20, -25);
+            drawTransformedLine(-40, -15, -20, -15); drawTransformedLine(-40, 15, -20, 15);
+            drawTransformedLine(20, -15, 40, -15); drawTransformedLine(20, 15, 40, 15);
+            drawTransformedLine(-20, 10, -12, 15); drawTransformedLine(-12, 15, -20, 20);
         }
         else if (comp.type == "Diode") {
             fillTriangleLocal(-12, -12, -12, 12, 12, 0, fillColor);
@@ -398,51 +463,6 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
             drawTransformedLine(-15, -20, -15, 20); drawTransformedLine(-15, -20, 20, 0); drawTransformedLine(-15, 20, 20, 0);
             drawTransformedLine(-35, -8, -15, -8); drawTransformedLine(-35, 8, -15, 8); drawTransformedLine(20, 0, 35, 0);
             drawTransformedLine(-12, -10, -6, -10); drawTransformedLine(-12, 10, -6, 10); drawTransformedLine(-9, 7, -9, 13);
-        }
-        else if (comp.type == "AND Gate") {
-            fillRectLocal(-15, -16, 15, 32, fillColor);
-            fillSemicircleLocal(0, 0, 16.0f, -PI/2.0f, PI/2.0f, fillColor);
-            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
-            drawTransformedLine(-35, -8, -15, -8); drawTransformedLine(-35, 8, -15, 8); drawTransformedLine(16, 0, 35, 0);
-            drawTransformedLine(-15, -16, -15, 16); drawTransformedLine(-15, -16, 0, -16); drawTransformedLine(-15, 16, 0, 16);
-            for(int j = -6; j < 6; ++j) {
-                float step = PI / 12.0f;
-                Point p1 = transformLocal(16.0f * std::cos(j * step), 16.0f * std::sin(j * step));
-                Point p2 = transformLocal(16.0f * std::cos((j+1) * step), 16.0f * std::sin((j+1) * step));
-                SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
-            }
-        }
-        else if (comp.type == "OR Gate") {
-            fillTriangleLocal(-15, -20, -5, 0, 5, -15, fillColor); fillTriangleLocal(-5, 0, 25, 0, 5, -15, fillColor);
-            fillTriangleLocal(-5, 0, 5, 15, 25, 0, fillColor); fillTriangleLocal(-15, 20, 5, 15, -5, 0, fillColor);
-            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
-            drawTransformedLine(-35, -8, -10, -8); drawTransformedLine(-35, 8, -10, 8); drawTransformedLine(25, 0, 35, 0);
-            drawTransformedLine(-15, -20, -5, 0); drawTransformedLine(-5, 0, -15, 20); drawTransformedLine(-15, -20, 5, -15);
-            drawTransformedLine(5, -15, 25, 0); drawTransformedLine(-15, 20, 5, 15); drawTransformedLine(5, 15, 25, 0);
-        }
-        else if (comp.type == "NOT Gate") {
-            fillTriangleLocal(-15, -15, -15, 15, 5, 0, fillColor); fillCircleLocal(10, 0, 5, fillColor);
-            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
-            drawTransformedLine(-35, 0, -15, 0); drawTransformedLine(15, 0, 35, 0);
-            drawTransformedLine(-15, -15, -15, 15); drawTransformedLine(-15, -15, 5, 0); drawTransformedLine(-15, 15, 5, 0);
-            drawTransformedCircle(10, 0, 5);
-        }
-        else if (comp.type == "Flip-Flop") {
-            fillRectLocal(-20, -25, 40, 50, fillColor);
-            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
-            drawTransformedLine(-20, -25, 20, -25); drawTransformedLine(20, -25, 20, 25);
-            drawTransformedLine(20, 25, -20, 25); drawTransformedLine(-20, 25, -20, -25);
-            drawTransformedLine(-35, -10, -20, -10); drawTransformedLine(-35, 10, -20, 10);
-            drawTransformedLine(20, -10, 35, -10); drawTransformedLine(20, 10, 35, 10);
-            drawTransformedLine(-20, 5, -12, 10); drawTransformedLine(-12, 10, -20, 15);
-            fillCircleLocal(24, 10, 4, fillColor); drawTransformedCircle(24, 10, 4);
-        }
-        else if (comp.type == "DC Source") {
-            fillCircleLocal(0, 0, 20, fillColor);
-            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
-            drawTransformedCircle(0, 0, 20); drawTransformedLine(0, -30, 0, -20); drawTransformedLine(0, 20, 0, 30);
-            drawTransformedLine(-12, -8, 12, -8); drawTransformedLine(-6, 8, 6, 8);
-            drawTransformedLine(-12, -16, -6, -16); drawTransformedLine(-9, -19, -9, -13);
         }
         else if (comp.type == "AC Source") {
             fillCircleLocal(0, 0, 15, fillColor);
@@ -468,10 +488,6 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
             SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
             drawTransformedLine(-25, -20, 25, -20); drawTransformedLine(25, -20, 25, 20);
             drawTransformedLine(25, 20, -25, 20); drawTransformedLine(-25, 20, -25, -20);
-            drawTransformedLine(-20, -15, 10, -15); drawTransformedLine(10, -15, 10, 15);
-            drawTransformedLine(10, 15, -20, 15); drawTransformedLine(-20, 15, -20, -15);
-            fillCircleLocal(17, -5, 3, fillColor); fillCircleLocal(17, 5, 3, fillColor);
-            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
             drawTransformedCircle(17, -5, 3); drawTransformedCircle(17, 5, 3);
             for(float x = -18; x <= 8; x += 1.0f) {
                 float y1 = std::sin((x+18) * PI / 6.0f) * 8.0f; float y2 = std::sin((x+19) * PI / 6.0f) * 8.0f;
@@ -498,12 +514,7 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
                 SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
                 if (texture) {
                     float textScale = std::min(0.65f, canvas_.zoom() * 0.65f);
-                    SDL_FRect destRect{
-                            center.x - (surface->w * textScale) / 2.0f,
-                            screenBox.y - surface->h * textScale - 3.0f,
-                            static_cast<float>(surface->w) * textScale,
-                            static_cast<float>(surface->h) * textScale
-                    };
+                    SDL_FRect destRect{ center.x - (surface->w * textScale) / 2.0f, screenBox.y - surface->h * textScale - 3.0f, static_cast<float>(surface->w) * textScale, static_cast<float>(surface->h) * textScale };
                     SDL_RenderTexture(renderer, texture, nullptr, &destRect);
                     SDL_DestroyTexture(texture);
                 }
@@ -517,12 +528,7 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
                     SDL_Texture* valTex = SDL_CreateTextureFromSurface(renderer, valSurf);
                     if (valTex) {
                         float textScale = std::min(0.6f, canvas_.zoom() * 0.6f);
-                        SDL_FRect destRect{
-                                center.x - (valSurf->w * textScale) / 2.0f,
-                                screenBox.y + screenBox.h + 2.0f,
-                                static_cast<float>(valSurf->w) * textScale,
-                                static_cast<float>(valSurf->h) * textScale
-                        };
+                        SDL_FRect destRect{ center.x - (valSurf->w * textScale) / 2.0f, screenBox.y + screenBox.h + 2.0f, static_cast<float>(valSurf->w) * textScale, static_cast<float>(valSurf->h) * textScale };
                         SDL_RenderTexture(renderer, valTex, nullptr, &destRect);
                         SDL_DestroyTexture(valTex);
                     }
