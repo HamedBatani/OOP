@@ -22,15 +22,13 @@ public:
 
     void renderSDL(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int windowHeight) const;
 
-    // رندر قطعات
     void renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font, const std::vector<ComponentInstance>& components) const;
 
-    // رندر سیم‌ها و گره‌های اتصال (جدید)
-    void renderWiresSDL(SDL_Renderer* renderer, const std::vector<Wire>& wires) const;
+    // پارامتر isSimulating برای تشخیص حالت اجرا اضافه شد
+    void renderWiresSDL(SDL_Renderer* renderer, const std::vector<Wire>& wires, bool isSimulating = false) const;
 
 private:
     const Canvas& canvas_;
 
-    // تابع کمکی برای رسم گره اتصال (Junction Dot)
     void fillScreenCircle(SDL_Renderer* renderer, float cx, float cy, float r, SDL_Color c) const;
 };

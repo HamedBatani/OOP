@@ -69,34 +69,35 @@ void Button::drawVectorIcon(SDL_Renderer* renderer, float x, float y, float size
     else if (icon_ == IconType::Menu) {
         SDL_RenderLine(renderer, cx+s/4, cy-s/4, cx-s/4, cy); SDL_RenderLine(renderer, cx-s/4, cy, cx+s/4, cy+s/4);
     }
-    else if (icon_ == IconType::NewFile) {
-        SDL_RenderLine(renderer, cx-s/3, cy+s/2, cx+s/3, cy+s/2); SDL_RenderLine(renderer, cx-s/3, cy+s/2, cx-s/3, cy-s/2);
-        SDL_RenderLine(renderer, cx-s/3, cy-s/2, cx, cy-s/2); SDL_RenderLine(renderer, cx, cy-s/2, cx+s/3, cy-s/6);
-        SDL_RenderLine(renderer, cx+s/3, cy-s/6, cx+s/3, cy+s/2); SDL_RenderLine(renderer, cx, cy-s/2, cx, cy-s/6);
-        SDL_RenderLine(renderer, cx, cy-s/6, cx+s/3, cy-s/6);
+    else if (icon_ == IconType::PlayIcon) {
+        SDL_SetRenderDrawColor(renderer, 40, 200, 80, 255);
+        SDL_FColor fc = {40.f/255.f, 200.f/255.f, 80.f/255.f, 1.0f};
+        SDL_Vertex v[3] = {{{cx - s/3, cy - s/2}, fc, {0,0}}, {{cx + s/2, cy}, fc, {0,0}}, {{cx - s/3, cy + s/2}, fc, {0,0}}};
+        SDL_RenderGeometry(renderer, nullptr, v, 3, nullptr, 0);
     }
-    else if (icon_ == IconType::Ruler) {
-        SDL_RenderLine(renderer, cx-s/2, cy+s/4, cx+s/2, cy-s/4); SDL_RenderLine(renderer, cx-s/2, cy+s/4, cx-s/4, cy+s/2);
-        SDL_RenderLine(renderer, cx+s/2, cy-s/4, cx+s/4, cy-s/2); SDL_RenderLine(renderer, cx-s/4, cy+s/2, cx+s/4, cy-s/2);
-        SDL_RenderLine(renderer, cx-s/8, cy+s/8, cx, cy+s/4); SDL_RenderLine(renderer, cx+s/8, cy, cx+s/4, cy+s/8);
+    else if (icon_ == IconType::PauseIcon) {
+        SDL_SetRenderDrawColor(renderer, 240, 180, 40, 255);
+        SDL_FRect b1{cx - s/3, cy - s/2, s/4, s}; SDL_RenderFillRect(renderer, &b1);
+        SDL_FRect b2{cx + s/12, cy - s/2, s/4, s}; SDL_RenderFillRect(renderer, &b2);
     }
-    else if (icon_ == IconType::Clock) {
-        drawCircle(cx, cy, s/2);
-        SDL_RenderLine(renderer, cx, cy, cx, cy-s/3); SDL_RenderLine(renderer, cx, cy, cx+s/4, cy+s/4);
+    else if (icon_ == IconType::StopIcon) {
+        SDL_SetRenderDrawColor(renderer, 220, 60, 60, 255);
+        SDL_FRect b{cx - s/2.5f, cy - s/2.5f, s*0.8f, s*0.8f}; SDL_RenderFillRect(renderer, &b);
     }
-    else if (icon_ == IconType::Settings) {
-        drawCircle(cx, cy, s/3); drawCircle(cx, cy, s/2);
-        for(int i=0; i<8; ++i) SDL_RenderLine(renderer, cx+s/3*std::cos(i*PI/4.f), cy+s/3*std::sin(i*PI/4.f), cx+s/1.5f*std::cos(i*PI/4.f), cy+s/1.5f*std::sin(i*PI/4.f));
+    else if (icon_ == IconType::StepIcon) {
+        SDL_SetRenderDrawColor(renderer, 40, 180, 240, 255);
+        SDL_FColor fc = {40.f/255.f, 180.f/255.f, 240.f/255.f, 1.0f};
+        SDL_FRect bar{cx + s/6, cy - s/2, s/5, s}; SDL_RenderFillRect(renderer, &bar);
+        SDL_Vertex v[3] = {{{cx - s/2.5f, cy - s/2}, fc, {0,0}}, {{cx + s/8, cy}, fc, {0,0}}, {{cx - s/2.5f, cy + s/2}, fc, {0,0}}};
+        SDL_RenderGeometry(renderer, nullptr, v, 3, nullptr, 0);
     }
     else if (icon_ == IconType::ExitIcon) {
         SDL_SetRenderDrawColor(renderer, 255, 100, 100, 255);
         SDL_RenderLine(renderer, cx-s/3, cy-s/3, cx+s/3, cy+s/3); SDL_RenderLine(renderer, cx-s/3, cy+s/3, cx+s/3, cy-s/3);
     }
-        // رسم آیکون سیم کشی
     else if (icon_ == IconType::WireIcon) {
-        SDL_SetRenderDrawColor(renderer, 0, 180, 80, 255); // رنگ سبز مهندسی
-        drawCircle(cx - s/2.5f, cy + s/4, 2);
-        drawCircle(cx + s/2.5f, cy - s/4, 2);
+        SDL_SetRenderDrawColor(renderer, 0, 180, 80, 255);
+        drawCircle(cx - s/2.5f, cy + s/4, 2); drawCircle(cx + s/2.5f, cy - s/4, 2);
         SDL_RenderLine(renderer, cx - s/2.5f, cy + s/4, cx, cy + s/4);
         SDL_RenderLine(renderer, cx, cy + s/4, cx, cy - s/4);
         SDL_RenderLine(renderer, cx, cy - s/4, cx + s/2.5f, cy - s/4);

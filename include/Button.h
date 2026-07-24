@@ -5,8 +5,7 @@
 #include <SDL3_ttf/SDL_ttf.h>
 #include <string>
 
-// اضافه شدن آیکون WireIcon به لیست
-enum class IconType { None, Save, Open, Grid, Menu, NewFile, Folder, Ruler, Clock, Settings, ExitIcon, WireIcon };
+enum class IconType { None, Save, Open, Grid, Menu, NewFile, Folder, Ruler, Clock, Settings, ExitIcon, WireIcon, PlayIcon, PauseIcon, StopIcon, StepIcon };
 
 class Button {
 public:

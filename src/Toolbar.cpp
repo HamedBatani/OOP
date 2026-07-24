@@ -6,12 +6,18 @@ Toolbar::Toolbar(float x, float y, float width, float height) : bounds_{x, y, wi
     SDL_Color hover{55, 60, 70, 255};
     SDL_Color text{220, 220, 225, 255};
 
-    // دکمه Wire اضافه و فاصله‌ها مجدد تنظیم شد
-    tools_.emplace_back(SDL_FRect{x + 10, y + 5, 80, 35}, "Save", bg, hover, text, IconType::Save);
-    tools_.emplace_back(SDL_FRect{x + 100, y + 5, 80, 35}, "Open", bg, hover, text, IconType::Open);
-    tools_.emplace_back(SDL_FRect{x + 190, y + 5, 80, 35}, "Wire", bg, hover, text, IconType::WireIcon); // دکمه جدید!
-    tools_.emplace_back(SDL_FRect{x + 280, y + 5, 80, 35}, "Grid", bg, hover, text, IconType::Grid);
-    tools_.emplace_back(SDL_FRect{x + 370, y + 5, 90, 35}, "Menu", bg, hover, text, IconType::Menu);
+    tools_.emplace_back(SDL_FRect{x + 10, y + 5, 75, 35}, "Save", bg, hover, text, IconType::Save);
+    tools_.emplace_back(SDL_FRect{x + 90, y + 5, 75, 35}, "Open", bg, hover, text, IconType::Open);
+    tools_.emplace_back(SDL_FRect{x + 170, y + 5, 75, 35}, "Wire", bg, hover, text, IconType::WireIcon);
+    tools_.emplace_back(SDL_FRect{x + 250, y + 5, 75, 35}, "Grid", bg, hover, text, IconType::Grid);
+
+    // دکمه‌های کنترل شبیه‌سازی (گنجاندن Step)
+    tools_.emplace_back(SDL_FRect{x + 335, y + 5, 75, 35}, "Run", bg, hover, text, IconType::PlayIcon);
+    tools_.emplace_back(SDL_FRect{x + 415, y + 5, 80, 35}, "Pause", bg, hover, text, IconType::PauseIcon);
+    tools_.emplace_back(SDL_FRect{x + 500, y + 5, 75, 35}, "Step", bg, hover, text, IconType::StepIcon);
+    tools_.emplace_back(SDL_FRect{x + 580, y + 5, 75, 35}, "Stop", bg, hover, text, IconType::StopIcon);
+
+    tools_.emplace_back(SDL_FRect{x + 665, y + 5, 80, 35}, "Menu", bg, hover, text, IconType::Menu);
 }
 
 void Toolbar::handleEvent(const SDL_Event& event, std::string& actionTriggered) {
@@ -27,8 +33,12 @@ void Toolbar::handleEvent(const SDL_Event& event, std::string& actionTriggered) 
                 std::string rawLabel = btn.getLabel();
                 if (rawLabel == "Save") actionTriggered = "Save";
                 else if (rawLabel == "Open") actionTriggered = "Load";
-                else if (rawLabel == "Wire") actionTriggered = "Wire Toggle"; // اکشن جدید
+                else if (rawLabel == "Wire") actionTriggered = "Wire Toggle";
                 else if (rawLabel == "Grid") actionTriggered = "Grid Toggle";
+                else if (rawLabel == "Run") actionTriggered = "Run";
+                else if (rawLabel == "Pause") actionTriggered = "Pause";
+                else if (rawLabel == "Step") actionTriggered = "Step";
+                else if (rawLabel == "Stop") actionTriggered = "Stop";
                 else if (rawLabel == "Menu") actionTriggered = "Main Menu";
                 return;
             }

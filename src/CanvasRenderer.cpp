@@ -163,24 +163,30 @@ void CanvasRenderer::fillScreenCircle(SDL_Renderer* renderer, float cx, float cy
     SDL_RenderGeometry(renderer, nullptr, v.data(), v.size(), nullptr, 0);
 }
 
-void CanvasRenderer::renderWiresSDL(SDL_Renderer* renderer, const std::vector<Wire>& wires) const {
+void CanvasRenderer::renderWiresSDL(SDL_Renderer* renderer, const std::vector<Wire>& wires, bool isSimulating) const {
     if (!renderer) return;
 
     for (const auto& wire : wires) {
         if (wire.routingPoints.size() < 2) continue;
 
-        SDL_Color wireColor = wire.isSelected ? SDL_Color{0, 120, 215, 255} : SDL_Color{10, 110, 40, 255};
+        SDL_Color wireColor;
+        if (wire.isSelected) {
+            wireColor = SDL_Color{0, 120, 215, 255};
+        } else if (isSimulating) {
+            if (wire.currentLogicState == DigitalState::High) wireColor = SDL_Color{220, 40, 40, 255};
+            else if (wire.currentLogicState == DigitalState::Low) wireColor = SDL_Color{40, 100, 220, 255};
+            else wireColor = SDL_Color{150, 150, 150, 255};
+        } else {
+            wireColor = SDL_Color{10, 110, 40, 255};
+        }
+
         SDL_SetRenderDrawColor(renderer, wireColor.r, wireColor.g, wireColor.b, wireColor.a);
 
         for (size_t i = 0; i < wire.routingPoints.size() - 1; ++i) {
             Point p1 = canvas_.worldToScreen(wire.routingPoints[i]);
             Point p2 = canvas_.worldToScreen(wire.routingPoints[i + 1]);
-
-            SDL_RenderLine(renderer, p1.x - 1, p1.y, p2.x - 1, p2.y);
             SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
-            SDL_RenderLine(renderer, p1.x + 1, p1.y, p2.x + 1, p2.y);
-            SDL_RenderLine(renderer, p1.x, p1.y - 1, p2.x, p2.y - 1);
-            SDL_RenderLine(renderer, p1.x, p1.y + 1, p2.x, p2.y + 1);
+            SDL_RenderLine(renderer, p1.x + 1, p1.y + 1, p2.x + 1, p2.y + 1);
         }
 
         if (wire.isCompleted) {
@@ -190,14 +196,43 @@ void CanvasRenderer::renderWiresSDL(SDL_Renderer* renderer, const std::vector<Wi
             fillScreenCircle(renderer, pStart.x, pStart.y, 4.0f, wireColor);
         }
 
-        SDL_Color freeEndpointColor{255, 140, 0, 255};
+        SDL_Color freeColor{255, 140, 0, 255};
         if (wire.startAnchor.isFree() && !wire.routingPoints.empty()) {
-            Point pFreeStart = canvas_.worldToScreen(wire.routingPoints.front());
-            fillScreenCircle(renderer, pFreeStart.x, pFreeStart.y, 5.0f, freeEndpointColor);
+            Point pt = canvas_.worldToScreen(wire.routingPoints.front());
+            fillScreenCircle(renderer, pt.x, pt.y, 5.0f, freeColor);
         }
         if (wire.endAnchor.isFree() && !wire.routingPoints.empty()) {
-            Point pFreeEnd = canvas_.worldToScreen(wire.routingPoints.back());
-            fillScreenCircle(renderer, pFreeEnd.x, pFreeEnd.y, 5.0f, freeEndpointColor);
+            Point pt = canvas_.worldToScreen(wire.routingPoints.back());
+            fillScreenCircle(renderer, pt.x, pt.y, 5.0f, freeColor);
+        }
+    }
+
+    for (size_t i = 0; i < wires.size(); ++i) {
+        for (size_t j = i + 1; j < wires.size(); ++j) {
+            const auto& w1 = wires[i]; const auto& w2 = wires[j];
+            for (size_t s1 = 0; s1 < w1.routingPoints.size() - 1; ++s1) {
+                for (size_t s2 = 0; s2 < w2.routingPoints.size() - 1; ++s2) {
+                    Point a = w1.routingPoints[s1], b = w1.routingPoints[s1+1];
+                    Point c = w2.routingPoints[s2], d = w2.routingPoints[s2+1];
+                    float det = (b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x);
+                    if (std::abs(det) > 0.001f) {
+                        float lambda = ((c.y - a.y) * (d.x - c.x) - (c.x - a.x) * (d.y - c.y)) / det;
+                        float gamma = ((c.y - a.y) * (b.x - a.x) - (c.x - a.x) * (b.y - a.y)) / det;
+                        if (lambda > 0.05f && lambda < 0.95f && gamma > 0.05f && gamma < 0.95f) {
+                            Point inter = { a.x + lambda * (b.x - a.x), a.y + lambda * (b.y - a.y) };
+                            Point scr = canvas_.worldToScreen(inter);
+
+                            SDL_Color dotColor = {10, 110, 40, 255};
+                            if (isSimulating) {
+                                if (w1.currentLogicState == DigitalState::High || w2.currentLogicState == DigitalState::High) dotColor = {220, 40, 40, 255};
+                                else if (w1.currentLogicState == DigitalState::Low || w2.currentLogicState == DigitalState::Low) dotColor = {40, 100, 220, 255};
+                                else dotColor = {150, 150, 150, 255};
+                            }
+                            fillScreenCircle(renderer, scr.x, scr.y, 5.0f, dotColor);
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -214,8 +249,8 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
 
         Point center = canvas_.worldToScreen(comp.worldPos);
 
-        SDL_Color fillColor = comp.isSelected ? SDL_Color{200, 230, 255, 255} : SDL_Color{245, 245, 245, 255};
-        SDL_Color strokeColor = comp.isSelected ? SDL_Color{0, 120, 215, 255} : SDL_Color{20, 20, 20, 255};
+        SDL_Color fillColor = comp.isSelected ? SDL_Color{200, 230, 255, 255} : SDL_Color{250, 252, 255, 255};
+        SDL_Color strokeColor = comp.isSelected ? SDL_Color{0, 120, 215, 255} : SDL_Color{25, 35, 45, 255};
 
         if (comp.isSelected) {
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
@@ -323,7 +358,6 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
 
         SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
 
-        // --- PRISTINE HIGH-FIDELITY SCHEMATIC PATH BLUEPRINTS ---
         if (comp.type == "Resistor") {
             fillRectLocal(-16, -8, 32, 16, fillColor);
             SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
@@ -335,6 +369,20 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
             fillRectLocal(-6, -12, 3, 24, strokeColor); fillRectLocal(3, -12, 3, 24, strokeColor);
             SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
             drawTransformedLine(-32, 0, -6, 0); drawTransformedLine(6, 0, 32, 0);
+        }
+        else if (comp.type == "Potentiometer") {
+            fillRectLocal(-16, -20, 16, 40, fillColor);
+            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+            drawTransformedLine(-16, -20, 0, -20); drawTransformedLine(0, -20, 0, 20); drawTransformedLine(0, 20, -16, 20); drawTransformedLine(-16, 20, -16, -20);
+            drawTransformedLine(-32, -15, -16, -15); drawTransformedLine(-32, 15, -16, 15);
+
+            float wiperY = -15.0f + (1.0f - comp.potWiperPosition) * 30.0f;
+
+            drawTransformedLine(16, wiperY, 32, 0);
+            SDL_SetRenderDrawColor(renderer, 220, 40, 40, 255);
+            drawTransformedLine(16, wiperY, 0, wiperY);
+            drawTransformedLine(0, wiperY, 6, wiperY - 4);
+            drawTransformedLine(0, wiperY, 6, wiperY + 4);
         }
         else if (comp.type == "Inductor") {
             for(int i = 0; i < 4; ++i) fillSemicircleLocal(-15.0f + (i * 10.0f), 0.0f, 5.0f, PI, 2.0f * PI, fillColor);
@@ -405,6 +453,103 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
             fillRectLocal(-10, 0, 20, 3, (comp.activeSevenSegmentByte & 0x40) ? glow : off);
             fillCircleLocal(14, 24, 2.5f, (comp.activeSevenSegmentByte & 0x80) ? glow : off);
         }
+        else if (comp.type == "LCD 16x2") {
+            fillRectLocal(-comp.worldWidth/2, -comp.worldHeight/2, comp.worldWidth, comp.worldHeight, {40, 45, 50, 255});
+            fillRectLocal(-comp.worldWidth/2 + 15.0f, -comp.worldHeight/2 + 10.0f, comp.worldWidth - 30.0f, comp.worldHeight - 20.0f, {130, 180, 50, 255});
+
+            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+            SDL_FRect block = {-comp.worldWidth/2, -comp.worldHeight/2, comp.worldWidth, comp.worldHeight};
+            drawTransformedLine(block.x, block.y, block.x + block.w, block.y);
+            drawTransformedLine(block.x + block.w, block.y, block.x + block.w, block.y + block.h);
+            drawTransformedLine(block.x + block.w, block.y + block.h, block.x, block.y + block.h);
+            drawTransformedLine(block.x, block.y + block.h, block.x, block.y);
+
+            for (const auto& pin : comp.pins) {
+                if (pin.designation == "RS" || pin.designation == "RW" || pin.designation == "E") {
+                    drawTransformedLine(-comp.worldWidth/2 - 5.0f, pin.localOffset.y, -comp.worldWidth/2, pin.localOffset.y);
+                } else {
+                    drawTransformedLine(comp.worldWidth/2, pin.localOffset.y, comp.worldWidth/2 + 5.0f, pin.localOffset.y);
+                }
+            }
+
+            if (font) {
+                SDL_Color lcdTextColor{30, 30, 30, 255};
+                for(int i=0; i<2; ++i) {
+                    std::string txt = comp.lcdLines[i];
+                    if (txt.find_first_not_of(' ') == std::string::npos) continue;
+                    SDL_Surface* surf = TTF_RenderText_Blended(font, txt.c_str(), 0, lcdTextColor);
+                    if (surf) {
+                        SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, surf);
+                        if (tex) {
+                            float textScale = std::min(0.45f, canvas_.zoom() * 0.45f);
+                            float startX = center.x - (comp.worldWidth/2 - 20.0f) * canvas_.zoom();
+                            float startY = center.y + ((i == 0) ? -12.0f : 4.0f) * canvas_.zoom();
+                            SDL_FRect destRect{ startX, startY, static_cast<float>(surf->w) * textScale, static_cast<float>(surf->h) * textScale };
+                            SDL_RenderTexture(renderer, tex, nullptr, &destRect);
+                            SDL_DestroyTexture(tex);
+                        }
+                        SDL_DestroySurface(surf);
+                    }
+                }
+            }
+        }
+        else if (comp.type == "Keypad 4x4") {
+            fillRectLocal(-comp.worldWidth/2, -comp.worldHeight/2, comp.worldWidth, comp.worldHeight, fillColor);
+            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+            SDL_FRect block = {-comp.worldWidth/2, -comp.worldHeight/2, comp.worldWidth, comp.worldHeight};
+            drawTransformedLine(block.x, block.y, block.x + block.w, block.y);
+            drawTransformedLine(block.x + block.w, block.y, block.x + block.w, block.y + block.h);
+            drawTransformedLine(block.x + block.w, block.y + block.h, block.x, block.y + block.h);
+            drawTransformedLine(block.x, block.y + block.h, block.x, block.y);
+
+            for (const auto& pin : comp.pins) {
+                if (pin.designation[0] == 'R') {
+                    drawTransformedLine(-comp.worldWidth/2 - 5.0f, pin.localOffset.y, -comp.worldWidth/2, pin.localOffset.y);
+                } else if (pin.designation[0] == 'C') {
+                    drawTransformedLine(pin.localOffset.x, comp.worldHeight/2, pin.localOffset.x, comp.worldHeight/2 + 5.0f);
+                }
+            }
+
+            float startX = -35.0f; float startY = -45.0f;
+            float cellW = 70.0f / 4.0f; float cellH = 90.0f / 4.0f;
+            const char* keys[4][4] = {
+                    {"1", "2", "3", "A"}, {"4", "5", "6", "B"},
+                    {"7", "8", "9", "C"}, {"*", "0", "#", "D"}
+            };
+
+            for (int r = 0; r < 4; ++r) {
+                for (int c = 0; c < 4; ++c) {
+                    float bx = startX + c * cellW + 2.0f; float by = startY + r * cellH + 2.0f;
+                    float bw = cellW - 4.0f; float bh = cellH - 4.0f;
+
+                    if (comp.activeKeypadRow == r && comp.activeKeypadCol == c) {
+                        fillRectLocal(bx, by, bw, bh, {150, 180, 220, 255});
+                    } else {
+                        fillRectLocal(bx, by, bw, bh, {220, 225, 230, 255});
+                    }
+
+                    SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+                    drawTransformedLine(bx, by, bx + bw, by); drawTransformedLine(bx + bw, by, bx + bw, by + bh);
+                    drawTransformedLine(bx + bw, by + bh, bx, by + bh); drawTransformedLine(bx, by + bh, bx, by);
+
+                    if (font) {
+                        SDL_Color textColor{30, 30, 30, 255};
+                        SDL_Surface* surf = TTF_RenderText_Blended(font, keys[r][c], 0, textColor);
+                        if (surf) {
+                            SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, surf);
+                            if (tex) {
+                                Point btnCenter = transformLocal(bx + bw/2.0f, by + bh/2.0f);
+                                float textScale = std::min(0.4f, canvas_.zoom() * 0.4f);
+                                SDL_FRect destRect{ btnCenter.x - (surf->w * textScale) / 2.0f, btnCenter.y - (surf->h * textScale) / 2.0f, static_cast<float>(surf->w) * textScale, static_cast<float>(surf->h) * textScale };
+                                SDL_RenderTexture(renderer, tex, nullptr, &destRect);
+                                SDL_DestroyTexture(tex);
+                            }
+                            SDL_DestroySurface(surf);
+                        }
+                    }
+                }
+            }
+        }
         else if (comp.type == "AND Gate" || comp.type == "NAND Gate") {
             fillRectLocal(-20, -16, 20, 32, fillColor);
             fillSemicircleLocal(0, 0, 16.0f, -PI/2.0f, PI/2.0f, fillColor);
@@ -464,35 +609,29 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
             drawTransformedLine(-35, -8, -15, -8); drawTransformedLine(-35, 8, -15, 8); drawTransformedLine(20, 0, 35, 0);
             drawTransformedLine(-12, -10, -6, -10); drawTransformedLine(-12, 10, -6, 10); drawTransformedLine(-9, 7, -9, 13);
         }
-        else if (comp.type == "AC Source") {
-            fillCircleLocal(0, 0, 15, fillColor);
+        else if (comp.type == "ADC" || comp.type == "DAC") {
+            fillRectLocal(-comp.worldWidth/2, -comp.worldHeight/2, comp.worldWidth, comp.worldHeight, fillColor);
             SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
-            drawTransformedLine(0, -30, 0, -15); drawTransformedLine(0, 15, 0, 30); drawTransformedCircle(0, 0, 15);
-            for(float x = -8; x <= 8; x += 1.0f) {
-                float y1 = std::sin(x * PI / 8.0f) * 5.0f; float y2 = std::sin((x+1) * PI / 8.0f) * 5.0f;
-                Point p1 = transformLocal(x, -y1); Point p2 = transformLocal(x + 1, -y2);
-                SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
-            }
-        }
-        else if (comp.type == "Voltmeter" || comp.type == "Ammeter") {
-            fillCircleLocal(0, 0, 15, fillColor);
-            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
-            drawTransformedLine(0, -30, 0, -15); drawTransformedLine(0, 15, 0, 30); drawTransformedCircle(0, 0, 15);
-            if(comp.type == "Voltmeter") { drawTransformedLine(-5, -5, 0, 5); drawTransformedLine(0, 5, 5, -5); }
-            else { drawTransformedLine(0, -6, -5, 5); drawTransformedLine(0, -6, 5, 5); drawTransformedLine(-3, 2, 3, 2); }
-        }
-        else if (comp.type == "Oscilloscope") {
-            fillRectLocal(-25, -20, 50, 40, fillColor);
-            SDL_Color screenColor = comp.isSelected ? SDL_Color{150, 200, 230, 255} : SDL_Color{220, 230, 220, 255};
-            fillRectLocal(-20, -15, 30, 30, screenColor);
-            SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
-            drawTransformedLine(-25, -20, 25, -20); drawTransformedLine(25, -20, 25, 20);
-            drawTransformedLine(25, 20, -25, 20); drawTransformedLine(-25, 20, -25, -20);
-            drawTransformedCircle(17, -5, 3); drawTransformedCircle(17, 5, 3);
-            for(float x = -18; x <= 8; x += 1.0f) {
-                float y1 = std::sin((x+18) * PI / 6.0f) * 8.0f; float y2 = std::sin((x+19) * PI / 6.0f) * 8.0f;
-                Point p1 = transformLocal(x, -y1); Point p2 = transformLocal(x + 1, -y2);
-                SDL_RenderLine(renderer, p1.x, p1.y, p2.x, p2.y);
+            SDL_FRect block = {-comp.worldWidth/2, -comp.worldHeight/2, comp.worldWidth, comp.worldHeight};
+            drawTransformedLine(block.x, block.y, block.x + block.w, block.y);
+            drawTransformedLine(block.x + block.w, block.y, block.x + block.w, block.y + block.h);
+            drawTransformedLine(block.x + block.w, block.y + block.h, block.x, block.y + block.h);
+            drawTransformedLine(block.x, block.y + block.h, block.x, block.y);
+
+            for (const auto& pin : comp.pins) {
+                if (pin.designation.find("D") != std::string::npos) {
+                    float px1 = (comp.type == "ADC") ? (comp.worldWidth/2) : (-comp.worldWidth/2 - 5.0f);
+                    float px2 = (comp.type == "ADC") ? (comp.worldWidth/2 + 5.0f) : (-comp.worldWidth/2);
+                    drawTransformedLine(px1, pin.localOffset.y, px2, pin.localOffset.y);
+                } else if (pin.designation == "Vout" || pin.designation == "Vin") {
+                    float px1 = (comp.type == "DAC") ? (comp.worldWidth/2) : (-comp.worldWidth/2 - 5.0f);
+                    float px2 = (comp.type == "DAC") ? (comp.worldWidth/2 + 5.0f) : (-comp.worldWidth/2);
+                    drawTransformedLine(px1, pin.localOffset.y, px2, pin.localOffset.y);
+                } else if (pin.designation == "Vref+") {
+                    drawTransformedLine(pin.localOffset.x, -comp.worldHeight/2 - 5.0f, pin.localOffset.x, -comp.worldHeight/2);
+                } else if (pin.designation == "Vref-") {
+                    drawTransformedLine(pin.localOffset.x, comp.worldHeight/2, pin.localOffset.x, comp.worldHeight/2 + 5.0f);
+                }
             }
         }
         else if (comp.type == "Ground") {
