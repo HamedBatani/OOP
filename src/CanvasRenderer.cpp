@@ -9,6 +9,7 @@
 #include <cmath>
 #include <algorithm>
 #include <vector>
+#include <sstream>
 
 namespace {
     void printPoint(std::ostream& output, const Point& point) {
@@ -438,13 +439,21 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
             drawTransformedLine(-40, -30, 40, -30); drawTransformedLine(40, -30, 40, 30);
             drawTransformedLine(40, 30, -40, 30); drawTransformedLine(-40, 30, -40, -30);
             drawTransformedLine(-40, -10, -30, -10); drawTransformedLine(-40, 10, -30, 10);
-            SDL_SetRenderDrawColor(renderer, 30, 130, 70, 255);
-            for (int i = 0; i < 24; ++i) {
-                float x1 = -27.0f + 54.0f * i / 24.0f;
-                float x2 = -27.0f + 54.0f * (i + 1) / 24.0f;
-                drawTransformedLine(x1, 9.0f * std::sin(x1 * PI / 15.0f),
-                                    x2, 9.0f * std::sin(x2 * PI / 15.0f));
-            }
+            auto drawTrace = [&](const std::vector<float>& samples, SDL_Color color) {
+                if (samples.size() < 2) return;
+                SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 255);
+                const std::size_t first = samples.size() > 60 ? samples.size() - 60 : 0;
+                const std::size_t visible = samples.size() - first;
+                for (std::size_t i = 1; i < visible; ++i) {
+                    const float x1 = -28.0f + 56.0f * static_cast<float>(i - 1) / static_cast<float>(visible - 1);
+                    const float x2 = -28.0f + 56.0f * static_cast<float>(i) / static_cast<float>(visible - 1);
+                    const float y1 = 18.0f - std::clamp(samples[first + i - 1], 0.0f, 5.0f) * 7.2f;
+                    const float y2 = 18.0f - std::clamp(samples[first + i], 0.0f, 5.0f) * 7.2f;
+                    drawTransformedLine(x1, y1, x2, y2);
+                }
+            };
+            drawTrace(comp.scopeSamplesA, {25, 190, 75, 255});
+            drawTrace(comp.scopeSamplesB, {35, 120, 230, 255});
         }
         else if (comp.type == "Switch") {
             SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
@@ -743,6 +752,23 @@ void CanvasRenderer::renderComponentsSDL(SDL_Renderer* renderer, TTF_Font* font,
                         SDL_DestroyTexture(valTex);
                     }
                     SDL_DestroySurface(valSurf);
+                }
+            }
+
+            if (comp.type == "Voltmeter" || comp.type == "Ammeter") {
+                std::ostringstream measurement;
+                measurement << std::fixed << std::setprecision(comp.type == "Ammeter" ? 3 : 2)
+                            << comp.measuredValue << (comp.type == "Ammeter" ? " A" : " V");
+                SDL_Surface* meterSurface = TTF_RenderText_Blended(font, measurement.str().c_str(), 0, {15, 105, 165, 255});
+                if (meterSurface) {
+                    SDL_Texture* meterTexture = SDL_CreateTextureFromSurface(renderer, meterSurface);
+                    if (meterTexture) {
+                        const float scale = std::min(0.55f, canvas_.zoom() * 0.55f);
+                        SDL_FRect meterRect{center.x - meterSurface->w * scale / 2.0f, center.y + 20.0f * canvas_.zoom(),
+                                            meterSurface->w * scale, meterSurface->h * scale};
+                        SDL_RenderTexture(renderer, meterTexture, nullptr, &meterRect); SDL_DestroyTexture(meterTexture);
+                    }
+                    SDL_DestroySurface(meterSurface);
                 }
             }
         }

@@ -63,6 +63,12 @@ namespace {
     }
 }
 
+bool CircuitSimulator::clockLevelAt(std::uint64_t simulationTimeMs, const std::string& frequencyHz) {
+    const float frequency = std::clamp(parseValue(frequencyHz, 1.0f), 0.05f, 1000.0f);
+    const auto halfPeriodMs = static_cast<std::uint64_t>(std::max(1.0f, std::round(500.0f / frequency)));
+    return (simulationTimeMs / halfPeriodMs) % 2 == 0;
+}
+
 void CircuitSimulator::step(std::vector<ComponentInstance>& components, std::vector<Wire>& wires, bool advanceSequential) {
     if (wires.empty()) {
         for (auto& component : components) {
@@ -105,7 +111,10 @@ void CircuitSimulator::step(std::vector<ComponentInstance>& components, std::vec
 
     // Closed interactive contacts join their two electrical nets.
     for (const auto& component : components) {
-        if ((component.type == "Switch" || component.type == "Push Button") && component.interactiveStateBool) {
+        if (component.type == "Ammeter") {
+            int a = rawNetForPin(component, "+"), b = rawNetForPin(component, "-");
+            if (a >= 0 && b >= 0) sets.unite(a, b);
+        } else if ((component.type == "Switch" || component.type == "Push Button") && component.interactiveStateBool) {
             int a = rawNetForPin(component, "1"), b = rawNetForPin(component, "2");
             if (a >= 0 && b >= 0) sets.unite(a, b);
         } else if (component.type == "Keypad 4x4" && component.activeKeypadRow >= 0 && component.activeKeypadCol >= 0) {
@@ -234,6 +243,27 @@ void CircuitSimulator::step(std::vector<ComponentInstance>& components, std::vec
                 component.processLcdCommand(readPin(component, "RS").logic == DigitalState::High ? 1 : 0, data);
             }
             if (advanceSequential) component.lastLcdEnableState = enable;
+        } else if (component.type == "Voltmeter") {
+            component.measuredValue = readPin(component, "+").voltage - readPin(component, "-").voltage;
+        } else if (component.type == "Ammeter") {
+            component.measuredValue = 0.0f;
+            const int meterNet = netForPin(component, "+");
+            for (const auto& load : components) {
+                if (load.type != "Resistor") continue;
+                const int aNet = netForPin(load, "1"), bNet = netForPin(load, "2");
+                if (aNet != meterNet && bNet != meterNet) continue;
+                const float resistance = std::max(0.001f, parseValue(load.valueStr, 1000.0f));
+                component.measuredValue += std::fabs(readPin(load, "1").voltage - readPin(load, "2").voltage) / resistance;
+            }
+        } else if (component.type == "Oscilloscope") {
+            component.measuredValue = readPin(component, "ChA").voltage;
+            if (advanceSequential) {
+                component.scopeSamplesA.push_back(readPin(component, "ChA").voltage);
+                component.scopeSamplesB.push_back(readPin(component, "ChB").voltage);
+                constexpr std::size_t maxSamples = 120;
+                if (component.scopeSamplesA.size() > maxSamples) component.scopeSamplesA.erase(component.scopeSamplesA.begin());
+                if (component.scopeSamplesB.size() > maxSamples) component.scopeSamplesB.erase(component.scopeSamplesB.begin());
+            }
         }
     }
 }
@@ -247,6 +277,8 @@ void CircuitSimulator::reset(std::vector<ComponentInstance>& components, std::ve
         if (component.type == "Clock Generator" || component.type == "Push Button" || component.type == "Colored LED")
             component.interactiveStateBool = false;
         if (component.type == "7-Segment Display") component.activeSevenSegmentByte = 0;
+        component.measuredValue = 0.0f;
+        component.scopeSamplesA.clear(); component.scopeSamplesB.clear();
         if (component.microcontroller) component.microcontroller->reset();
         for (auto& pin : component.pins) { pin.currentVoltage = 0.0f; pin.isFloating = true; }
     }

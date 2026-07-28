@@ -61,6 +61,9 @@ public:
     DigitalState lastLcdEnableState{DigitalState::Low};
 
     float potWiperPosition{0.5f}; // وضعیت لغزنده پتانسیومتر
+    float measuredValue{0.0f};
+    std::vector<float> scopeSamplesA;
+    std::vector<float> scopeSamplesB;
 
     std::shared_ptr<Component> coreComponent;
     std::shared_ptr<MicrocontrollerCore> microcontroller;

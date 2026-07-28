@@ -12,6 +12,10 @@
 #include "Wire.h"
 #include "Junction.h"
 #include "CircuitSimulator.h"
+#include "DesignRuleChecker.h"
+#include "ProjectHistory.h"
+#include "PngExporter.h"
+#include "SmartWireRouter.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
@@ -23,6 +27,11 @@
 #include <algorithm>
 #include <cctype>
 #include <set>
+#include <filesystem>
+#include <sstream>
+#include <iomanip>
+#include <cstdlib>
+#include <mutex>
 
 namespace {
     constexpr int WindowWidth = 800;
@@ -81,6 +90,38 @@ namespace {
         }
         return anchor.cachedWorldPos;
     }
+
+    bool confirmOverwrite(SDL_Window* window, const std::string& path) {
+        if (!std::filesystem::exists(path)) return true;
+        const SDL_MessageBoxButtonData buttons[] = {
+            {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Overwrite"},
+            {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Cancel"}
+        };
+        const std::string message = "A project already exists at:\n" + path + "\n\nReplace it?";
+        const SDL_MessageBoxData data{SDL_MESSAGEBOX_WARNING, window, "Confirm overwrite", message.c_str(), 2, buttons, nullptr};
+        int selected = 0;
+        return SDL_ShowMessageBox(&data, &selected) && selected == 1;
+    }
+
+    std::string defaultValueFor(const std::string& type) {
+        return type;
+    }
+
+    struct FileDialogResult {
+        std::mutex mutex;
+        std::string selectedPath;
+        bool completed{false};
+        bool failed{false};
+    };
+
+    void SDLCALL fileDialogCallback(void* userdata, const char* const* filelist, int) {
+        auto* result = static_cast<FileDialogResult*>(userdata);
+        if (!result) return;
+        std::lock_guard<std::mutex> lock(result->mutex);
+        result->failed = filelist == nullptr;
+        result->selectedPath = (filelist && filelist[0]) ? filelist[0] : "";
+        result->completed = true;
+    }
 }
 
 int main(int argc, char** argv) {
@@ -98,7 +139,7 @@ int main(int argc, char** argv) {
     TTF_Font* font = loadFont();
     if (!font) { SDL_DestroyRenderer(renderer); SDL_DestroyWindow(window); TTF_Quit(); SDL_Quit(); return 1; }
 
-    StartMenu startMenu;
+    StartMenu startMenu{window};
     const bool startInEditor = argc > 1 && std::string(argv[1]) == "--new-project";
     AppState currentState = startInEditor ? AppState::NewProject : AppState::MainMenu;
     bool running = true;
@@ -110,10 +151,18 @@ int main(int argc, char** argv) {
     std::unique_ptr<CanvasRenderer> canvasRenderer = nullptr;
 
     bool isPanning = false;
+    bool isPanningWithLeftButton = false;
     std::string activeAction = "";
     std::string selectedComponent = "None";
-    bool isSaveDialogOpen = false;
-    std::string saveFileName = "";
+    std::string currentProjectPath;
+    ProjectHistory history;
+    bool historyReady = false;
+    std::vector<DrcMessage> simulationLog{{DrcSeverity::Info, "Ready. Run DRC before simulation."}};
+    bool exportRequested = false;
+    std::string exportPath;
+    FileDialogResult exportDialogResult;
+    FileDialogResult projectSaveDialogResult;
+    FileDialogResult projectOpenDialogResult;
 
     std::vector<ComponentInstance> placedComponents;
     std::map<std::string, int> componentCounters;
@@ -169,6 +218,8 @@ int main(int argc, char** argv) {
         const PageSize& size = startMenu.getSelectedPageSize();
         canvas = std::make_unique<Canvas>(static_cast<float>(size.width), static_cast<float>(size.height));
         canvasRenderer = std::make_unique<CanvasRenderer>(*canvas);
+        history.reset(compLib.getActiveList(), placedComponents, circuitWires);
+        historyReady = true;
     }
 
     auto updateConnectedWires = [&](const ComponentInstance& comp) {
@@ -216,6 +267,36 @@ int main(int argc, char** argv) {
         }
     };
 
+    auto pinDirection = [&](const std::string& componentId, const std::string& pinName) -> Point {
+        for (const auto& component : placedComponents) {
+            if (component.labelId != componentId) continue;
+            for (const auto& pin : component.pins) {
+                if (pin.designation != pinName) continue;
+                const Point delta = pin.calculatedWorldPos - component.worldPos;
+                if (std::fabs(delta.x) >= std::fabs(delta.y)) return {delta.x >= 0.0f ? 1.0f : -1.0f, 0.0f};
+                return {0.0f, delta.y >= 0.0f ? 1.0f : -1.0f};
+            }
+        }
+        return {0.0f, 0.0f};
+    };
+
+    auto updateSmartRoute = [&](Wire& wire, Point start, Point end,
+                                const std::string& endComponent = "", const std::string& endPin = "") {
+        std::vector<SDL_FRect> obstacles;
+        // Endpoint symbols are obstacles too.  The pin clearance stubs let the
+        // wire leave them legally; excluding them allowed later path segments
+        // to double back through the body of the source or destination.
+        for (const auto& component : placedComponents)
+            obstacles.push_back(component.getWorldBoundingBox());
+        wire.routingPoints = SmartWireRouter::route(start, end,
+                                                     pinDirection(wire.startCompId, wire.startPinName),
+                                                     pinDirection(endComponent, endPin), obstacles);
+        if (!wire.routingPoints.empty()) {
+            wire.startAnchor.cachedWorldPos = wire.routingPoints.front();
+            wire.endAnchor.cachedWorldPos = wire.routingPoints.back();
+        }
+    };
+
     auto rehomeWireEndpointIfOnWire = [&](Wire& wire, bool isStartEndpoint, const Point& releasePoint, float tolerance) -> Point {
         Wire::ClosestPointResult best; best.distance = 1e9f; int bestWireIdx = -1;
         for (size_t i = 0; i < circuitWires.size(); ++i) {
@@ -235,6 +316,22 @@ int main(int argc, char** argv) {
         return releasePoint;
     };
 
+    auto showProjectSaveDialog = [&]() {
+        static const SDL_DialogFileFilter projectFilters[] = {{"Circuit project (JSON)", "json"}};
+        const std::string defaultLocation = currentProjectPath.empty() ? "circuit.json" : currentProjectPath;
+        SDL_ShowSaveFileDialog(&fileDialogCallback, &projectSaveDialogResult, window,
+                               projectFilters, 1, defaultLocation.c_str());
+    };
+
+    auto showProjectOpenDialog = [&]() {
+        static const SDL_DialogFileFilter projectFilters[] = {
+            {"Circuit projects", "json;circuit;txt"}, {"All files", "*"}
+        };
+        const char* initialLocation = currentProjectPath.empty() ? nullptr : currentProjectPath.c_str();
+        SDL_ShowOpenFileDialog(&fileDialogCallback, &projectOpenDialogResult, window,
+                               projectFilters, 2, initialLocation, false);
+    };
+
     while (running && currentState != AppState::Exit) {
         SDL_GetWindowSize(window, &windowWidth, &windowHeight);
         sidebarWidth = std::clamp(windowWidth * 0.24f, 200.0f, 300.0f);
@@ -242,6 +339,67 @@ int main(int argc, char** argv) {
         toolbar.setBounds(0.0f, 0.0f, static_cast<float>(windowWidth), toolbarHeight);
         compLib.setBounds(0.0f, toolbarHeight, sidebarWidth,
                           std::max(320.0f, windowHeight - toolbarHeight));
+
+        {
+            std::lock_guard<std::mutex> lock(exportDialogResult.mutex);
+            if (exportDialogResult.completed) {
+                if (exportDialogResult.failed) simulationLog = {{DrcSeverity::Error, "The export file dialog could not be opened."}};
+                else if (!exportDialogResult.selectedPath.empty()) {
+                    exportPath = exportDialogResult.selectedPath;
+                    if (std::filesystem::path(exportPath).extension().empty()) exportPath += ".png";
+                    exportRequested = true;
+                }
+                exportDialogResult.selectedPath.clear(); exportDialogResult.completed = false; exportDialogResult.failed = false;
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lock(projectSaveDialogResult.mutex);
+            if (projectSaveDialogResult.completed) {
+                if (projectSaveDialogResult.failed) {
+                    simulationLog = {{DrcSeverity::Error, "The project save dialog could not be opened."}};
+                } else if (!projectSaveDialogResult.selectedPath.empty()) {
+                    std::string path = projectSaveDialogResult.selectedPath;
+                    if (std::filesystem::path(path).extension().empty()) path += ".json";
+                    if (confirmOverwrite(window, path) &&
+                        ProjectManager::saveProject(path, compLib.getActiveList(), placedComponents, circuitWires)) {
+                        currentProjectPath = path;
+                        startMenu.addSavedProject(path);
+                        simulationLog = {{DrcSeverity::Info, "Project saved: " + path}};
+                    } else if (!std::filesystem::exists(path)) {
+                        simulationLog = {{DrcSeverity::Error, "Save failed: " + path}};
+                    }
+                }
+                projectSaveDialogResult.selectedPath.clear();
+                projectSaveDialogResult.completed = false;
+                projectSaveDialogResult.failed = false;
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lock(projectOpenDialogResult.mutex);
+            if (projectOpenDialogResult.completed) {
+                if (projectOpenDialogResult.failed) {
+                    simulationLog = {{DrcSeverity::Error, "The project open dialog could not be opened."}};
+                } else if (!projectOpenDialogResult.selectedPath.empty()) {
+                    const std::string path = projectOpenDialogResult.selectedPath;
+                    std::vector<std::string> active;
+                    if (ProjectManager::loadProject(path, active, placedComponents, circuitWires)) {
+                        compLib.setActiveList(active);
+                        currentProjectPath = path;
+                        startMenu.addSavedProject(path);
+                        history.reset(active, placedComponents, circuitWires);
+                        historyReady = true;
+                        simState = SimState::Stopped;
+                        simTimeMs = 0;
+                        simulationLog = {{DrcSeverity::Info, "Project opened: " + path}};
+                    } else {
+                        simulationLog = {{DrcSeverity::Error, "Open failed: file is missing, damaged, or unsupported."}};
+                    }
+                }
+                projectOpenDialogResult.selectedPath.clear();
+                projectOpenDialogResult.completed = false;
+                projectOpenDialogResult.failed = false;
+            }
+        }
 
         uint64_t currentTicks = SDL_GetTicks();
         uint64_t deltaMs = currentTicks - lastTicks;
@@ -254,8 +412,7 @@ int main(int argc, char** argv) {
             advanceSequentialThisFrame = (previousSimTimeMs / 100) != (simTimeMs / 100);
             for (auto& comp : placedComponents) {
                 if (comp.type == "Clock Generator") {
-                    uint64_t period = 500;
-                    comp.interactiveStateBool = ((simTimeMs / period) % 2 == 0);
+                    comp.interactiveStateBool = CircuitSimulator::clockLevelAt(simTimeMs, comp.valueStr);
                 }
             }
         }
@@ -335,6 +492,9 @@ int main(int argc, char** argv) {
                                     try { edited.propagationDelayNs = std::max(0.0f, std::stof(editValueBuf)); } catch (...) {}
                                 } else if (edited.type == "Microcontroller" && edited.microcontroller && !editValueBuf.empty()) {
                                     const bool loaded = edited.microcontroller->loadHexFirmware(editValueBuf);
+                                    simulationLog = {{loaded ? DrcSeverity::Info : DrcSeverity::Error,
+                                                      loaded ? "Firmware loaded successfully: " + editValueBuf
+                                                             : "Firmware load failed: check the path and Intel HEX checksum."}};
                                     SDL_ShowSimpleMessageBox(loaded ? SDL_MESSAGEBOX_INFORMATION : SDL_MESSAGEBOX_ERROR,
                                                              loaded ? "Firmware loaded" : "Firmware error",
                                                              loaded ? "The Intel HEX firmware was validated and loaded."
@@ -355,22 +515,6 @@ int main(int argc, char** argv) {
                     continue;
                 }
 
-                if (isSaveDialogOpen) {
-                    if (event.type == SDL_EVENT_TEXT_INPUT) {
-                        if (saveFileName.size() < 25) saveFileName += event.text.text;
-                    } else if (event.type == SDL_EVENT_KEY_DOWN) {
-                        if (event.key.key == SDLK_BACKSPACE && !saveFileName.empty()) saveFileName.pop_back();
-                        else if (event.key.key == SDLK_RETURN || event.key.key == SDLK_KP_ENTER) {
-                            if (!saveFileName.empty()) {
-                                std::string fullPath = saveFileName + ".txt";
-                                if (ProjectManager::saveProject(fullPath, compLib.getActiveList(), placedComponents, circuitWires)) startMenu.addSavedProject(fullPath);
-                            }
-                            isSaveDialogOpen = false;
-                        } else if (event.key.key == SDLK_ESCAPE) isSaveDialogOpen = false;
-                    }
-                    continue;
-                }
-
                 if (isContextMenuOpen) {
                     if (event.type == SDL_EVENT_MOUSE_MOTION) {
                         float mx = event.motion.x, my = event.motion.y;
@@ -385,7 +529,7 @@ int main(int argc, char** argv) {
                                     auto& comp = placedComponents[contextTargetIndex];
                                     if (selectedOption == 0) {
                                         isPropertiesDialogOpen = true; editingComponentIndex = contextTargetIndex;
-                                        editLabelBuf = comp.labelId; editValueBuf = comp.valueStr;
+                                        editLabelBuf = comp.labelId; editValueBuf = comp.valueStr == comp.type ? "" : comp.valueStr;
                                         editDelayBuf = std::to_string(static_cast<int>(comp.type == "ADC" ? comp.adcConversionDelayNs : (comp.type == "DAC" ? comp.dacConversionDelayNs : comp.propagationDelayNs)));
                                         maxEditFields = (comp.type == "ADC" || comp.type == "DAC") ? 3 : 2; activeEditField = 0;
                                     } else if (selectedOption == 1) {
@@ -431,8 +575,24 @@ int main(int argc, char** argv) {
                         if (isWiring) { isWiring = false; circuitWires.pop_back(); }
                         if (isDraggingWire) { isDraggingWire = false; draggingWireIndex = -1; }
                         if (isDraggingWireEndpoint) { isDraggingWireEndpoint = false; draggingEndpointWireIndex = -1; }
+                        if (isPanningWithLeftButton) { isPanning = false; isPanningWithLeftButton = false; }
                     }
-                    else if ((event.key.mod & SDL_KMOD_CTRL) && event.key.key == SDLK_S) { isSaveDialogOpen = true; saveFileName = ""; }
+                    else if ((event.key.mod & SDL_KMOD_CTRL) && event.key.key == SDLK_Z) {
+                        std::vector<std::string> active = compLib.getActiveList();
+                        const bool redo = (event.key.mod & SDL_KMOD_SHIFT) != 0;
+                        const bool changed = redo ? history.redo(active, placedComponents, circuitWires)
+                                                  : history.undo(active, placedComponents, circuitWires);
+                        if (changed) { compLib.setActiveList(active); simulationLog = {{DrcSeverity::Info, redo ? "Redo applied." : "Undo applied."}}; }
+                    }
+                    else if ((event.key.mod & SDL_KMOD_CTRL) && event.key.key == SDLK_Y) {
+                        std::vector<std::string> active = compLib.getActiveList();
+                        if (history.redo(active, placedComponents, circuitWires)) { compLib.setActiveList(active); simulationLog = {{DrcSeverity::Info, "Redo applied."}}; }
+                    }
+                    else if ((event.key.mod & SDL_KMOD_CTRL) && event.key.key == SDLK_S) {
+                        if ((event.key.mod & SDL_KMOD_SHIFT) || currentProjectPath.empty()) showProjectSaveDialog();
+                        else if (ProjectManager::saveProject(currentProjectPath, compLib.getActiveList(), placedComponents, circuitWires))
+                            simulationLog = {{DrcSeverity::Info, "Project saved: " + currentProjectPath}};
+                    }
                     else if (selectedComponent == "None" || selectedComponent.empty()) {
                         if (event.key.key == SDLK_R) {
                             for (auto& comp : placedComponents) {
@@ -479,22 +639,53 @@ int main(int argc, char** argv) {
                     isWireModeActive = !isWireModeActive; selectedComponent = "None";
                     for (auto& comp : placedComponents) comp.isSelected = false;
                     activeAction = "";
-                } else if (activeAction == "Save") { isSaveDialogOpen = true; saveFileName = ""; activeAction = "";
-                } else if (activeAction == "Load") { canvas = nullptr; canvasRenderer = nullptr; placedComponents.clear(); circuitWires.clear(); currentState = AppState::MainMenu; activeAction = "";
+                } else if (activeAction == "Save") {
+                    if (currentProjectPath.empty()) showProjectSaveDialog();
+                    else if (ProjectManager::saveProject(currentProjectPath, compLib.getActiveList(), placedComponents, circuitWires)) simulationLog = {{DrcSeverity::Info, "Project saved: " + currentProjectPath}};
+                    activeAction = "";
+                } else if (activeAction == "Save As") { showProjectSaveDialog(); activeAction = "";
+                } else if (activeAction == "Undo" || activeAction == "Redo") {
+                    std::vector<std::string> active = compLib.getActiveList(); const bool redo = activeAction == "Redo";
+                    const bool changed = redo ? history.redo(active, placedComponents, circuitWires) : history.undo(active, placedComponents, circuitWires);
+                    if (changed) { compLib.setActiveList(active); simulationLog = {{DrcSeverity::Info, redo ? "Redo applied." : "Undo applied."}}; }
+                    activeAction = "";
+                } else if (activeAction == "Export") {
+                    static const SDL_DialogFileFilter exportFilters[] = {{"PNG image", "png"}};
+                    SDL_ShowSaveFileDialog(&fileDialogCallback, &exportDialogResult, window,
+                                           exportFilters, 1, "circuit_export.png");
+                    activeAction = "";
+                } else if (activeAction == "Load") { showProjectOpenDialog(); activeAction = "";
                 } else if (activeAction == "Grid Toggle" && canvas) { canvas->grid().setVisible(!canvas->grid().isVisible()); activeAction = "";
                 } else if (activeAction == "Main Menu") { canvas = nullptr; canvasRenderer = nullptr; placedComponents.clear(); circuitWires.clear(); currentState = AppState::MainMenu; activeAction = "";
                 } else if (activeAction == "Run") {
-                    for (auto& comp : placedComponents) if (comp.microcontroller) comp.microcontroller->start();
-                    simState = SimState::Running; activeAction = "";
+                    const DrcReport report = DesignRuleChecker::inspect(placedComponents, circuitWires);
+                    simulationLog = report.messages;
+                    if (report.canRun) {
+                        for (auto& comp : placedComponents) if (comp.microcontroller) comp.microcontroller->start();
+                        simState = SimState::Running;
+                        simulationLog.insert(simulationLog.begin(), {DrcSeverity::Info, "Simulation started: DRC passed."});
+                    } else {
+                        simState = SimState::Stopped;
+                        simulationLog.insert(simulationLog.begin(), {DrcSeverity::Error, "Simulation blocked by DRC errors."});
+                    }
+                    activeAction = "";
                 } else if (activeAction == "Pause") {
                     if (simState == SimState::Running) simState = SimState::Paused;
                     activeAction = "";
                 } else if (activeAction == "Stop") {
                     simState = SimState::Stopped; simTimeMs = 0;
                     CircuitSimulator::reset(placedComponents, circuitWires);
+                    simulationLog = {{DrcSeverity::Info, "Simulation stopped and reset."}};
                     activeAction = "";
                     // --- مدیریت دکمه Step (بند 8.4) ---
                 } else if (activeAction == "Step") {
+                    const DrcReport report = DesignRuleChecker::inspect(placedComponents, circuitWires);
+                    simulationLog = report.messages;
+                    if (!report.canRun) {
+                        simulationLog.insert(simulationLog.begin(), {DrcSeverity::Error, "Step blocked by DRC errors."});
+                        simState = SimState::Stopped; activeAction = "";
+                        continue;
+                    }
                     if (simState == SimState::Running) simState = SimState::Paused;
                     else if (simState == SimState::Stopped) { simState = SimState::Paused; simTimeMs = 0; }
 
@@ -502,8 +693,7 @@ int main(int argc, char** argv) {
 
                     for (auto& comp : placedComponents) {
                         if (comp.type == "Clock Generator") {
-                            uint64_t period = 500;
-                            comp.interactiveStateBool = ((simTimeMs / period) % 2 == 0);
+                            comp.interactiveStateBool = CircuitSimulator::clockLevelAt(simTimeMs, comp.valueStr);
                         }
                         if (comp.microcontroller) comp.microcontroller->start();
                         // محل قرارگیری متد stepInstruction() میکرو در آینده
@@ -561,7 +751,10 @@ int main(int argc, char** argv) {
                             if (isWiring) {
                                 Point targetPoint = canvas->snapToGrid(currentWorldMouse);
                                 for(auto& comp : placedComponents) { for(auto& pin : comp.pins) { if(pin.isHighlighted) targetPoint = pin.calculatedWorldPos; } }
-                                circuitWires.back().updateOrthogonalRoute(wiringStartPoint, targetPoint);
+                                std::string hoverComponent, hoverPin;
+                                for (const auto& component : placedComponents) for (const auto& pin : component.pins)
+                                    if (pin.isHighlighted) { hoverComponent = component.labelId; hoverPin = pin.designation; }
+                                updateSmartRoute(circuitWires.back(), wiringStartPoint, targetPoint, hoverComponent, hoverPin);
                             }
                         }
                     }
@@ -629,7 +822,7 @@ int main(int argc, char** argv) {
                                         Wire& newWire = circuitWires.back();
                                         if (validConnection) { newWire.endCompId = eComp; newWire.endPinName = ePin; newWire.endAnchor = WireAnchor::makePinLock(eComp, ePin, snapPt); }
                                         else { float lockTolerance = 8.0f / canvas->zoom(); snapPt = rehomeWireEndpointIfOnWire(newWire, false, snapPt, lockTolerance); }
-                                        newWire.isCompleted = true; newWire.updateOrthogonalRoute(wiringStartPoint, snapPt);
+                                        newWire.isCompleted = true; updateSmartRoute(newWire, wiringStartPoint, snapPt, eComp, ePin);
                                         isWiring = false; isWireModeActive = false; propagateWireUpdates();
                                     }
                                     continue;
@@ -654,7 +847,7 @@ int main(int argc, char** argv) {
                                     Point worldTarget = canvas->snapToGrid(canvas->mouseWorldPosition()); std::string prefixStr = "U";
                                     if (selectedComponent == "Ground") prefixStr = "GND"; else if (selectedComponent == "Battery") prefixStr = "B"; else if (selectedComponent == "Clock Generator") prefixStr = "CLK"; else if (selectedComponent == "Switch") prefixStr = "SW"; else if (selectedComponent == "Push Button") prefixStr = "PB"; else if (selectedComponent == "Potentiometer") prefixStr = "RV"; else if (selectedComponent == "Colored LED") prefixStr = "LED"; else if (selectedComponent == "7-Segment Display") prefixStr = "SEG"; else if (selectedComponent == "Microcontroller") prefixStr = "MCU"; else if (selectedComponent == "External Memory") prefixStr = "MEM"; else { char prefix = std::toupper(selectedComponent[0]); prefixStr = std::string(1, prefix); }
                                     componentCounters[prefixStr]++; std::string finalId = prefixStr + std::to_string(componentCounters[prefixStr]);
-                                    placedComponents.emplace_back(selectedComponent, finalId, "", worldTarget);
+                                    placedComponents.emplace_back(selectedComponent, finalId, defaultValueFor(selectedComponent), worldTarget);
                                 }
                                 else {
                                     Point worldMouse = canvas->mouseWorldPosition(); bool hitCompDetected = false; int hitCompIndex = -1;
@@ -693,7 +886,9 @@ int main(int argc, char** argv) {
                                         else if (placedComponents[hitCompIndex].type == "Push Button" && simState != SimState::Stopped) { placedComponents[hitCompIndex].interactiveStateBool = true; }
                                         else if (event.button.clicks == 2) {
                                             isPropertiesDialogOpen = true; editingComponentIndex = hitCompIndex;
-                                            editLabelBuf = placedComponents[hitCompIndex].labelId; editValueBuf = placedComponents[hitCompIndex].valueStr;
+                                            editLabelBuf = placedComponents[hitCompIndex].labelId;
+                                            editValueBuf = placedComponents[hitCompIndex].valueStr == placedComponents[hitCompIndex].type
+                                                               ? "" : placedComponents[hitCompIndex].valueStr;
                                             editDelayBuf = std::to_string(static_cast<int>(placedComponents[hitCompIndex].type == "ADC" ? placedComponents[hitCompIndex].adcConversionDelayNs : (placedComponents[hitCompIndex].type == "DAC" ? placedComponents[hitCompIndex].dacConversionDelayNs : placedComponents[hitCompIndex].propagationDelayNs)));
                                             maxEditFields = (placedComponents[hitCompIndex].type == "ADC" || placedComponents[hitCompIndex].type == "DAC") ? 3 : 2; activeEditField = 0; isDraggingComponents = false;
                                         } else {
@@ -729,8 +924,16 @@ int main(int argc, char** argv) {
                                             isDraggingWire = true; draggingWireIndex = hitWireIndex; wireDragStartWorldMouse = worldMouse; wireDragStartRoutingPoints = circuitWires[hitWireIndex].routingPoints;
                                         }
                                         else {
-                                            if (!(SDL_GetModState() & SDL_KMOD_SHIFT)) { for (auto& c : placedComponents) c.isSelected = false; for (auto& w : circuitWires) w.isSelected = false; }
-                                            isSelectDragging = true; selectDragStartScreen = { static_cast<float>(event.button.x), static_cast<float>(event.button.y) }; visualSelectBox = { static_cast<float>(event.button.x), static_cast<float>(event.button.y), 0.0f, 0.0f };
+                                            if (SDL_GetModState() & SDL_KMOD_SHIFT) {
+                                                isSelectDragging = true;
+                                                selectDragStartScreen = {static_cast<float>(event.button.x), static_cast<float>(event.button.y)};
+                                                visualSelectBox = {static_cast<float>(event.button.x), static_cast<float>(event.button.y), 0.0f, 0.0f};
+                                            } else {
+                                                for (auto& c : placedComponents) c.isSelected = false;
+                                                for (auto& w : circuitWires) w.isSelected = false;
+                                                isPanning = true;
+                                                isPanningWithLeftButton = true;
+                                            }
                                         }
                                     }
                                 }
@@ -740,7 +943,8 @@ int main(int argc, char** argv) {
                     else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
                         if (event.button.button == SDL_BUTTON_MIDDLE) isPanning = false;
                         else if (event.button.button == SDL_BUTTON_LEFT) {
-                            if (isDraggingComponents) isDraggingComponents = false;
+                            if (isPanningWithLeftButton) { isPanning = false; isPanningWithLeftButton = false; }
+                            else if (isDraggingComponents) isDraggingComponents = false;
                             else if (isDraggingWire) { isDraggingWire = false; draggingWireIndex = -1; wireDragStartRoutingPoints.clear(); }
                             else if (isDraggingWireEndpoint && draggingEndpointWireIndex >= 0 && draggingEndpointWireIndex < static_cast<int>(circuitWires.size())) {
                                 Wire& w = circuitWires[draggingEndpointWireIndex];
@@ -799,20 +1003,29 @@ int main(int argc, char** argv) {
                     canvas = std::make_unique<Canvas>(static_cast<float>(size.width), static_cast<float>(size.height));
                     canvasRenderer = std::make_unique<CanvasRenderer>(*canvas);
                     placedComponents.clear(); circuitWires.clear(); componentCounters.clear();
+                    currentProjectPath.clear();
 
                     if (startMenu.shouldLoadProject()) {
                         std::vector<std::string> loadedList;
                         if (ProjectManager::loadProject(startMenu.getSelectedProjectFile(), loadedList, placedComponents, circuitWires)) {
                             compLib.setActiveList(loadedList);
+                            currentProjectPath = startMenu.getSelectedProjectFile();
+                            simulationLog = {{DrcSeverity::Info, "Project opened: " + currentProjectPath}};
                             for (const auto& comp : placedComponents) {
                                 if (!comp.type.empty()) { char prefix = std::toupper(comp.type[0]); std::string prefixStr(1, prefix); componentCounters[prefixStr]++; }
                             }
                         }
                         startMenu.resetLoadProject();
                     } else compLib.setActiveList({});
+                    history.reset(compLib.getActiveList(), placedComponents, circuitWires); historyReady = true;
                 }
                 startMenu.resetRequestedState();
             }
+        }
+
+        if (currentState == AppState::NewProject && simState == SimState::Stopped) {
+            if (!historyReady) { history.reset(compLib.getActiveList(), placedComponents, circuitWires); historyReady = true; }
+            else history.record(compLib.getActiveList(), placedComponents, circuitWires);
         }
 
         switch (currentState) {
@@ -826,7 +1039,18 @@ int main(int argc, char** argv) {
                     canvasRenderer->renderSDL(renderer, font, canvasViewport.w, canvasViewport.h);
                     canvasRenderer->renderWiresSDL(renderer, circuitWires, simState != SimState::Stopped);
                     canvasRenderer->renderComponentsSDL(renderer, font, placedComponents);
-                    SDL_SetRenderViewport(renderer, nullptr); toolbar.render(renderer, font); compLib.render(renderer, font, selectedComponent);
+                    SDL_SetRenderViewport(renderer, nullptr);
+                    if (exportRequested) {
+                        const SDL_Rect exportRegion{static_cast<int>(sidebarWidth), static_cast<int>(toolbarHeight),
+                                                    std::max(1, windowWidth - static_cast<int>(sidebarWidth)),
+                                                    std::max(1, windowHeight - static_cast<int>(toolbarHeight) - 105)};
+                        std::string error;
+                        if (PngExporter::saveRendererRegion(renderer, exportRegion, exportPath, &error))
+                            simulationLog = {{DrcSeverity::Info, "Circuit exported as PNG: " + exportPath}};
+                        else simulationLog = {{DrcSeverity::Error, "Export failed: " + error}};
+                        exportRequested = false;
+                    }
+                    toolbar.render(renderer, font); compLib.render(renderer, font, selectedComponent);
 
                     if (simState == SimState::Running) {
                         std::string timeStr = "Time: " + std::to_string(simTimeMs / 1000.0f) + "s";
@@ -837,6 +1061,38 @@ int main(int argc, char** argv) {
                     }
 
                     if (isWireModeActive) renderText(renderer, font, "WIRE MODE [Press ESC to cancel]", windowWidth / 2.0f + 100.0f, 60.0f, {0, 180, 80, 255});
+
+                    if (simState != SimState::Stopped && canvas) {
+                        const Point mouseWorld = canvas->mouseWorldPosition();
+                        const Wire* hoveredWire = nullptr; float bestDistance = 8.0f / canvas->zoom();
+                        for (const auto& wire : circuitWires) {
+                            const auto hit = wire.findClosestPointOnWire(mouseWorld);
+                            if (hit.found && hit.distance <= bestDistance) { bestDistance = hit.distance; hoveredWire = &wire; }
+                        }
+                        if (hoveredWire) {
+                            std::ostringstream probe; probe << std::fixed << std::setprecision(3) << hoveredWire->currentVoltage << " V";
+                            const Point mouse = canvas->mouseScreenPosition();
+                            SDL_FRect probeBg{sidebarWidth + mouse.x + 12.0f, toolbarHeight + mouse.y - 28.0f, 92.0f, 25.0f};
+                            SDL_SetRenderDrawColor(renderer, 25, 32, 42, 245); SDL_RenderFillRect(renderer, &probeBg);
+                            SDL_SetRenderDrawColor(renderer, 55, 180, 230, 255); SDL_RenderRect(renderer, &probeBg);
+                            renderText(renderer, font, probe.str(), probeBg.x + 7.0f, probeBg.y + 1.0f, {225, 245, 255, 255}, false);
+                        }
+                    }
+
+                    const float logHeight = 105.0f;
+                    SDL_FRect logRect{sidebarWidth, static_cast<float>(windowHeight) - logHeight,
+                                      static_cast<float>(windowWidth) - sidebarWidth, logHeight};
+                    SDL_SetRenderDrawColor(renderer, 18, 22, 29, 248); SDL_RenderFillRect(renderer, &logRect);
+                    SDL_SetRenderDrawColor(renderer, 60, 72, 88, 255); SDL_RenderRect(renderer, &logRect);
+                    renderText(renderer, font, "SIMULATION LOG", logRect.x + 10.0f, logRect.y + 4.0f, {145, 175, 210, 255}, false);
+                    const std::size_t firstLog = simulationLog.size() > 3 ? simulationLog.size() - 3 : 0;
+                    float logY = logRect.y + 29.0f;
+                    for (std::size_t i = firstLog; i < simulationLog.size(); ++i) {
+                        SDL_Color color{185, 205, 225, 255};
+                        if (simulationLog[i].severity == DrcSeverity::Error) color = {245, 90, 90, 255};
+                        else if (simulationLog[i].severity == DrcSeverity::Warning) color = {245, 190, 70, 255};
+                        renderText(renderer, font, simulationLog[i].text, logRect.x + 12.0f, logY, color, false); logY += 23.0f;
+                    }
 
                     if (isSelectDragging) {
                         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND); SDL_SetRenderDrawColor(renderer, 0, 120, 215, 45); SDL_RenderFillRect(renderer, &visualSelectBox);
@@ -863,7 +1119,19 @@ int main(int argc, char** argv) {
                         renderText(renderer, font, dispLabel, labelBoxRect.x + 8.0f, labelBoxRect.y + 4.0f, {255, 255, 255, 255}, false);
 
                         std::string valPrompt = "Technical Value Specification:";
-                        if (comp.type == "Resistor") valPrompt = "Resistance Value (Ohm):"; else if (comp.type == "Capacitor") valPrompt = "Capacitance (Farad):"; else if (comp.type == "DC Source" || comp.type == "AC Source") valPrompt = "Source Voltage (Volt):"; else if (comp.type == "Inductor") valPrompt = "Inductance Value (Henry):"; else if (comp.type == "Colored LED") valPrompt = "LED Visual Glow Color (Red, Green, Blue):"; else if (comp.type == "7-Segment Display") valPrompt = "Active Segment Mask Hex Byte (e.g. 0x4F):"; else if (comp.type == "ADC" || comp.type == "DAC") valPrompt = "Resolution (Bits):"; else if (comp.type == "Microcontroller") valPrompt = "Intel HEX Firmware Path:"; else if (comp.type == "External Memory") valPrompt = "Memory Size (bytes):"; else if (comp.coreComponent && comp.coreComponent->getComponentClass() == ComponentClass::DigitalLogic) valPrompt = "Propagation Delay Parameter (ns):";
+                        if (comp.type == "Resistor") valPrompt = "Resistance (Ohm):";
+                        else if (comp.type == "Capacitor") valPrompt = "Capacitance (Farad):";
+                        else if (comp.type == "Inductor") valPrompt = "Inductance (Henry):";
+                        else if (comp.type == "Diode") valPrompt = "Forward Voltage (Volt):";
+                        else if (comp.type == "DC Source" || comp.type == "AC Source" || comp.type == "Battery") valPrompt = "Source Voltage (Volt):";
+                        else if (comp.type == "Clock Generator") valPrompt = "Frequency (Hz, 0.05 to 1000):";
+                        else if (comp.type == "Potentiometer") valPrompt = "Total Resistance (Ohm):";
+                        else if (comp.type == "Colored LED") valPrompt = "LED Color (Red, Green, Blue):";
+                        else if (comp.type == "7-Segment Display") valPrompt = "Segment Mask (hex, e.g. 0x4F):";
+                        else if (comp.type == "ADC" || comp.type == "DAC") valPrompt = "Resolution (Bits):";
+                        else if (comp.type == "Microcontroller") valPrompt = "Intel HEX Firmware Path:";
+                        else if (comp.type == "External Memory") valPrompt = "Memory Capacity (bytes):";
+                        else if (comp.coreComponent && comp.coreComponent->getComponentClass() == ComponentClass::DigitalLogic) valPrompt = "Propagation Delay (ns):";
 
                         renderText(renderer, font, valPrompt, dialogRect.x + 20.0f, dialogRect.y + 125.0f, {200, 210, 230, 255}, false);
                         SDL_FRect valBoxRect{ dialogRect.x + 20.0f, dialogRect.y + 152.0f, dialogRect.w - 40.0f, 32.0f };
@@ -882,24 +1150,6 @@ int main(int argc, char** argv) {
                         }
 
                         renderText(renderer, font, "TAB: Switch | ENTER: Confirm | ESC: Cancel", windowWidth / 2.0f, dialogRect.y + dialogH - 35.0f, {150, 160, 180, 255});
-                    }
-
-                    if (isSaveDialogOpen) {
-                        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND); SDL_SetRenderDrawColor(renderer, 0, 0, 0, 180);
-                        SDL_FRect screenRect{0, 0, static_cast<float>(windowWidth), static_cast<float>(windowHeight)}; SDL_RenderFillRect(renderer, &screenRect);
-                        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
-
-                        SDL_FRect dialogRect{ windowWidth / 2.0f - 160.0f, windowHeight / 2.0f - 80.0f, 320.0f, 160.0f };
-                        SDL_SetRenderDrawColor(renderer, 45, 55, 75, 255); SDL_RenderFillRect(renderer, &dialogRect);
-                        SDL_SetRenderDrawColor(renderer, 100, 110, 130, 255); SDL_RenderRect(renderer, &dialogRect);
-                        renderText(renderer, font, "Enter Project Name:", windowWidth / 2.0f, dialogRect.y + 20.0f, {255, 255, 255, 255});
-
-                        SDL_FRect inputRect{ dialogRect.x + 20.0f, dialogRect.y + 60.0f, dialogRect.w - 40.0f, 40.0f };
-                        SDL_SetRenderDrawColor(renderer, 24, 28, 36, 255); SDL_RenderFillRect(renderer, &inputRect);
-                        SDL_SetRenderDrawColor(renderer, 80, 90, 110, 255); SDL_RenderRect(renderer, &inputRect);
-                        std::string displayText = saveFileName; if ((SDL_GetTicks() / 500) % 2 == 0) displayText += "_";
-                        renderText(renderer, font, displayText, inputRect.x + 10.0f, inputRect.y + 8.0f, {200, 210, 230, 255}, false);
-                        renderText(renderer, font, "Press ENTER to save, ESC to cancel", windowWidth / 2.0f, dialogRect.y + 120.0f, {150, 160, 180, 255});
                     }
 
                     if (isContextMenuOpen) {

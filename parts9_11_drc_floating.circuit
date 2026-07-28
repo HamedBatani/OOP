@@ -1,0 +1,6 @@
+OOP_CIRCUIT 2
+ACTIVE 1
+"AND Gate"
+COMPONENTS 1
+"AND Gate" "U_FLOAT" "" 360 240 0 0 0 0 0 0 5 2 8 10 8 10 0.5 0 0 "                " "                " 0
+WIRES 0

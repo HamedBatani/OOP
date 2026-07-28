@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <sstream>
 #include <string>
+#include <filesystem>
+#include <system_error>
 
 namespace {
     constexpr int ButtonWidth = 280;
@@ -71,8 +73,38 @@ const char* pageSizeTypeToString(PageSizeType type) {
     switch (type) { case PageSizeType::A4: return "A4"; case PageSizeType::A3: return "A3"; case PageSizeType::Custom: return "Custom"; default: return "Unknown"; }
 }
 
-StartMenu::StartMenu() : selectedPageSize_{210.0, 297.0, PageSizeType::A4}, recentProjects_{"circuit.txt"}, currentView_(MenuView::Main), requestedState_(AppState::MainMenu), shouldLoadProject_(false) {
+StartMenu::StartMenu(SDL_Window* window) : selectedPageSize_{210.0, 297.0, PageSizeType::A4}, currentView_(MenuView::Main), requestedState_(AppState::MainMenu), shouldLoadProject_(false), window_(window) {
+    const std::filesystem::path workingDirectory = std::filesystem::current_path();
+    const std::filesystem::path searchRoots[] = {workingDirectory, workingDirectory.parent_path()};
+    std::error_code error;
+    for (const auto& root : searchRoots) {
+        if (!std::filesystem::is_directory(root, error)) continue;
+        for (const auto& entry : std::filesystem::directory_iterator(root, error)) {
+            if (error) break;
+            const std::string extension = entry.path().extension().string();
+            if (!entry.is_regular_file(error) || (extension != ".json" && extension != ".circuit")) continue;
+            const std::filesystem::path relative = entry.path().lexically_relative(workingDirectory);
+            const std::string path = relative.empty() ? entry.path().string() : relative.string();
+            if (std::find(recentProjects_.begin(), recentProjects_.end(), path) == recentProjects_.end()) recentProjects_.push_back(path);
+        }
+    }
+    std::sort(recentProjects_.begin(), recentProjects_.end());
     initializeButtons();
+}
+
+void SDLCALL StartMenu::openDialogCallback(void* userdata, const char* const* filelist, int) {
+    auto* menu = static_cast<StartMenu*>(userdata);
+    if (!menu || !filelist || !filelist[0]) return;
+    std::lock_guard<std::mutex> lock(menu->dialogMutex_);
+    menu->pendingOpenPath_ = filelist[0];
+}
+
+void StartMenu::showNativeOpenDialog() {
+    static const SDL_DialogFileFilter filters[] = {
+        {"Circuit projects", "json;circuit;txt"},
+        {"All files", "*"}
+    };
+    SDL_ShowOpenFileDialog(&StartMenu::openDialogCallback, this, window_, filters, 2, nullptr, false);
 }
 
 void StartMenu::setViewportSize(int width, int height) {
@@ -141,7 +173,16 @@ void StartMenu::render(SDL_Renderer* renderer, TTF_Font* font) const {
 }
 
 const PageSize& StartMenu::getSelectedPageSize() const { return selectedPageSize_; }
-AppState StartMenu::getRequestedState() const { return requestedState_; }
+AppState StartMenu::getRequestedState() {
+    std::lock_guard<std::mutex> lock(dialogMutex_);
+    if (!pendingOpenPath_.empty()) {
+        selectedProjectFile_ = pendingOpenPath_;
+        pendingOpenPath_.clear();
+        shouldLoadProject_ = true;
+        requestedState_ = AppState::NewProject;
+    }
+    return requestedState_;
+}
 void StartMenu::resetRequestedState() { requestedState_ = AppState::MainMenu; }
 
 void StartMenu::initializeButtons() {
@@ -212,7 +253,7 @@ void StartMenu::handleMainMenuClick(float mouseX, float mouseY) {
         if (!button.contains(mouseX, mouseY)) continue;
         const std::string& label = button.getLabel();
         if (label == "New Project") requestedState_ = AppState::NewProject;
-        else if (label == "Open Project") currentView_ = MenuView::OpenProject;
+        else if (label == "Open Project") showNativeOpenDialog();
         else if (label == "Select Page Size") currentView_ = MenuView::PageSizeSelection;
         else if (label == "Recent Projects") currentView_ = MenuView::RecentProjects;
         else if (label == "Exit") requestedState_ = AppState::Exit;

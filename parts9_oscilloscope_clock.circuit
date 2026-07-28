@@ -1,0 +1,13 @@
+OOP_CIRCUIT 2
+ACTIVE 3
+"Clock Generator"
+"Ground"
+"Oscilloscope"
+COMPONENTS 3
+"Clock Generator" "CLK1" "1" 250 220 0 0 0 0 0 0 5 2 8 10 8 10 0.5 0 0 "                " "                " 0
+"Ground" "GND1" "" 250 360 0 0 0 0 0 0 5 2 8 10 8 10 0.5 0 0 "                " "                " 0
+"Oscilloscope" "OSC1" "" 520 240 0 0 0 0 0 0 5 2 8 10 8 10 0.5 0 0 "                " "                " 0
+WIRES 3
+"scope-clock" "CLK1" "+" "OSC1" "ChA" 1 1 "CLK1" "+" "" 0 0 250 190 1 "OSC1" "ChA" "" 0 0 480 230 3 250 190 480 190 480 230
+"scope-ground" "CLK1" "-" "GND1" "GND" 1 1 "CLK1" "-" "" 0 0 250 250 1 "GND1" "GND" "" 0 0 250 345 2 250 250 250 345
+"scope-reference" "OSC1" "ChB" "GND1" "GND" 1 1 "OSC1" "ChB" "" 0 0 480 250 1 "GND1" "GND" "" 0 0 250 345 3 480 250 480 345 250 345

@@ -29,6 +29,8 @@ add_executable(OOP
         src/Canvas.cpp
         src/CanvasRenderer.cpp
         src/CircuitSimulator.cpp
+        src/DesignRuleChecker.cpp
+        src/PngExporter.cpp
         include/AppState.h
         include/PageSize.h
         include/Button.h
@@ -36,6 +38,10 @@ add_executable(OOP
         include/Canvas.h
         include/CanvasRenderer.h
         include/CircuitSimulator.h
+        include/DesignRuleChecker.h
+        include/ProjectHistory.h
+        include/PngExporter.h
+        include/SmartWireRouter.h
         include/Grid.h
         include/Point.h
         src/Toolbar.cpp
@@ -89,6 +95,7 @@ if(BUILD_TESTING)
     add_executable(OOP_core_tests
             tests/CoreTests.cpp
             src/CircuitSimulator.cpp
+            src/DesignRuleChecker.cpp
             src/ComponentLibrary.cpp)
     target_include_directories(OOP_core_tests PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include

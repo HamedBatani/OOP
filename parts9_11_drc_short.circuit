@@ -1,0 +1,8 @@
+OOP_CIRCUIT 2
+ACTIVE 1
+"DC Source"
+COMPONENTS 2
+"DC Source" "V_HIGH" "5" 240 220 0 0 0 0 0 0 5 2 8 10 8 10 0.5 0 0 "                " "                " 0
+"DC Source" "V_LOW" "0" 440 220 0 0 0 0 0 0 5 2 8 10 8 10 0.5 0 0 "                " "                " 0
+WIRES 1
+"short-w1" "V_HIGH" "+" "V_LOW" "+" 1 1 "V_HIGH" "+" "" 0 0 240 190 1 "V_LOW" "+" "" 0 0 440 190 2 240 190 440 190

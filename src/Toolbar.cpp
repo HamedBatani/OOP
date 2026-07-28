@@ -7,7 +7,11 @@ Toolbar::Toolbar(float x, float y, float width, float height) : bounds_{x, y, wi
     SDL_Color text{220, 220, 225, 255};
 
     tools_.emplace_back(SDL_FRect{x + 10, y + 5, 75, 35}, "Save", bg, hover, text, IconType::Save);
+    tools_.emplace_back(SDL_FRect{x + 90, y + 5, 75, 35}, "Save As", bg, hover, text, IconType::None);
     tools_.emplace_back(SDL_FRect{x + 90, y + 5, 75, 35}, "Open", bg, hover, text, IconType::Open);
+    tools_.emplace_back(SDL_FRect{x + 90, y + 5, 75, 35}, "Undo", bg, hover, text, IconType::None);
+    tools_.emplace_back(SDL_FRect{x + 90, y + 5, 75, 35}, "Redo", bg, hover, text, IconType::None);
+    tools_.emplace_back(SDL_FRect{x + 90, y + 5, 75, 35}, "Export", bg, hover, text, IconType::None);
     tools_.emplace_back(SDL_FRect{x + 170, y + 5, 75, 35}, "Wire", bg, hover, text, IconType::WireIcon);
     tools_.emplace_back(SDL_FRect{x + 250, y + 5, 75, 35}, "Grid", bg, hover, text, IconType::Grid);
 
@@ -32,7 +36,11 @@ void Toolbar::handleEvent(const SDL_Event& event, std::string& actionTriggered) 
             if (btn.contains(mx, my)) {
                 std::string rawLabel = btn.getLabel();
                 if (rawLabel == "Save") actionTriggered = "Save";
+                else if (rawLabel == "Save As") actionTriggered = "Save As";
                 else if (rawLabel == "Open") actionTriggered = "Load";
+                else if (rawLabel == "Undo") actionTriggered = "Undo";
+                else if (rawLabel == "Redo") actionTriggered = "Redo";
+                else if (rawLabel == "Export") actionTriggered = "Export";
                 else if (rawLabel == "Wire") actionTriggered = "Wire Toggle";
                 else if (rawLabel == "Grid") actionTriggered = "Grid Toggle";
                 else if (rawLabel == "Run") actionTriggered = "Run";

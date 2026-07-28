@@ -10,10 +10,11 @@
 
 #include <string>
 #include <vector>
+#include <mutex>
 
 class StartMenu {
 public:
-    StartMenu();
+    explicit StartMenu(SDL_Window* window = nullptr);
 
     void handleEvent(const SDL_Event& event);
     void updateHoverState(float mouseX, float mouseY);
@@ -21,7 +22,7 @@ public:
     void setViewportSize(int width, int height);
 
     const PageSize& getSelectedPageSize() const;
-    AppState getRequestedState() const;
+    AppState getRequestedState();
 
     void resetRequestedState();
 
@@ -66,4 +67,10 @@ private:
     bool shouldLoadProject_{false};
     int viewportWidth_{800};
     int viewportHeight_{600};
+    SDL_Window* window_{nullptr};
+    std::mutex dialogMutex_;
+    std::string pendingOpenPath_;
+
+    void showNativeOpenDialog();
+    static void SDLCALL openDialogCallback(void* userdata, const char* const* filelist, int filter);
 };
