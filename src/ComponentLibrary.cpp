@@ -25,32 +25,51 @@ ComponentLibrary::ComponentLibrary(float x, float y, float width, float height)
     categories_.push_back({"Interactive & Outputs", false, {"Switch", "Push Button", "Potentiometer", "Colored LED", "7-Segment Display", "LCD 16x2", "Keypad 4x4"}});
     categories_.push_back({"Digital Logic Gates", false, {"AND Gate", "OR Gate", "NOT Gate", "XOR Gate", "NAND Gate", "Flip-Flop"}});
     categories_.push_back({"Measurement", false, {"Voltmeter", "Ammeter", "Oscilloscope"}});
-    categories_.push_back({"Advanced Components", false, {"ADC", "DAC"}});
+    categories_.push_back({"Advanced Components", false, {"ADC", "DAC", "Microcontroller", "External Memory"}});
 }
 
-void ComponentLibrary::handleEvent(const SDL_Event& event, std::string& selectedComponent) {
+void ComponentLibrary::setBounds(float x, float y, float width, float height) {
+    x_ = x;
+    y_ = y;
+    width_ = std::max(180.0f, width);
+    height_ = std::max(320.0f, height);
+    scrollY_ = std::clamp(scrollY_, 0.0f, maxScrollY_);
+}
+
+bool ComponentLibrary::contains(float screenX, float screenY) const {
+    return screenX >= x_ && screenX <= x_ + width_ && screenY >= y_ && screenY <= y_ + height_;
+}
+
+bool ComponentLibrary::containsScrollableArea(float screenX, float screenY) const {
+    const float previewHeight = std::min(240.0f, std::max(150.0f, height_ * 0.38f));
+    return screenX >= x_ && screenX <= x_ + width_ &&
+           screenY >= y_ + 40.0f && screenY <= y_ + height_ - previewHeight;
+}
+
+bool ComponentLibrary::handleEvent(const SDL_Event& event, std::string& selectedComponent) {
     if (event.type == SDL_EVENT_MOUSE_MOTION) {
         hoverX_ = event.motion.x; hoverY_ = event.motion.y;
     }
 
     float mx = hoverX_, my = hoverY_;
-    float previewHeight = 240.0f;
+    float previewHeight = std::min(240.0f, std::max(150.0f, height_ * 0.38f));
 
     if (event.type == SDL_EVENT_MOUSE_WHEEL) {
-        if (mx >= x_ && mx <= x_ + width_ && my >= y_ + 40.0f && my <= y_ + height_ - previewHeight) {
+        if (containsScrollableArea(mx, my)) {
             scrollY_ -= event.wheel.y * 30.0f;
             if (scrollY_ < 0.0f) scrollY_ = 0.0f;
             if (scrollY_ > maxScrollY_) scrollY_ = maxScrollY_;
-            return;
+            return true;
         }
+        return false;
     }
 
     if (isSearchFocused_) {
         if (event.type == SDL_EVENT_TEXT_INPUT) {
-            searchQuery_ += event.text.text; return;
+            searchQuery_ += event.text.text; return true;
         } else if (event.type == SDL_EVENT_KEY_DOWN) {
             if (event.key.key == SDLK_BACKSPACE && !searchQuery_.empty()) {
-                searchQuery_.pop_back(); return;
+                searchQuery_.pop_back(); return true;
             }
         }
     }
@@ -59,25 +78,25 @@ void ComponentLibrary::handleEvent(const SDL_Event& event, std::string& selected
         bool isLeftClick = (event.button.button == SDL_BUTTON_LEFT);
         bool isRightClick = (event.button.button == SDL_BUTTON_RIGHT);
 
-        if (!isLeftClick && !isRightClick) return;
+        if (!isLeftClick && !isRightClick) return false;
 
         if (mx < x_ || mx > x_ + width_ || my < y_ || my > y_ + height_ - previewHeight) {
             if (isLeftClick && !(mx >= x_ && mx <= x_ + width_ && my >= y_ && my <= y_ + height_)) {
                 isSearchFocused_ = false;
             }
-            return;
+            return contains(mx, my);
         }
 
         if (isLeftClick) {
             SDL_FRect searchRect{x_ + 10.0f, y_ + 10.0f, width_ - 20.0f, 30.0f};
             if (mx >= searchRect.x && mx <= searchRect.x + searchRect.w && my >= searchRect.y && my <= searchRect.y + searchRect.h) {
-                isSearchFocused_ = true; return;
+                isSearchFocused_ = true; return true;
             } else {
                 isSearchFocused_ = false;
             }
         }
 
-        if (my < y_ + 50.0f) return;
+        if (my < y_ + 50.0f) return true;
 
         float currentY = y_ + 55.0f - scrollY_;
 
@@ -92,7 +111,7 @@ void ComponentLibrary::handleEvent(const SDL_Event& event, std::string& selected
                     } else if (isRightClick) {
                         activeList_.erase(activeList_.begin() + i);
                     }
-                    return;
+                    return true;
                 }
                 currentY += 26.0f;
             }
@@ -111,7 +130,8 @@ void ComponentLibrary::handleEvent(const SDL_Event& event, std::string& selected
 
             SDL_FRect catRect{x_ + 5.0f, currentY, width_ - 10.0f, 28.0f};
             if (mx >= catRect.x && mx <= catRect.x + catRect.w && my >= catRect.y && my <= catRect.y + catRect.h) {
-                if (isLeftClick) cat.isExpanded = !cat.isExpanded; return;
+                if (isLeftClick) cat.isExpanded = !cat.isExpanded;
+                return true;
             }
             currentY += 28.0f;
 
@@ -129,13 +149,15 @@ void ComponentLibrary::handleEvent(const SDL_Event& event, std::string& selected
                         } else if (isRightClick) {
                             if (std::find(activeList_.begin(), activeList_.end(), item) == activeList_.end()) activeList_.push_back(item);
                         }
-                        return;
+                        return true;
                     }
                     currentY += 26.0f;
                 }
             }
         }
+        return contains(mx, my);
     }
+    return false;
 }
 
 void ComponentLibrary::render(SDL_Renderer* renderer, TTF_Font* font, const std::string& selectedComponent) const {
@@ -171,7 +193,7 @@ void ComponentLibrary::render(SDL_Renderer* renderer, TTF_Font* font, const std:
         SDL_DestroySurface(searchSurf);
     }
 
-    float previewHeight = 240.0f;
+    float previewHeight = std::min(240.0f, std::max(150.0f, height_ * 0.38f));
     SDL_Rect listClipRect{ static_cast<int>(x_), static_cast<int>(y_ + 45.0f), static_cast<int>(width_), static_cast<int>(height_ - previewHeight - 45.0f) };
     SDL_SetRenderClipRect(renderer, &listClipRect);
 
@@ -302,7 +324,7 @@ void ComponentLibrary::render(SDL_Renderer* renderer, TTF_Font* font, const std:
 }
 
 void ComponentLibrary::renderPreviewBox(SDL_Renderer* renderer, TTF_Font* font, const std::string& compName) const {
-    float previewHeight = 240.0f;
+    float previewHeight = std::min(240.0f, std::max(150.0f, height_ * 0.38f));
     SDL_FRect previewBg{x_, y_ + height_ - previewHeight, width_, previewHeight};
 
     SDL_SetRenderDrawColor(renderer, 250, 250, 250, 255);
@@ -389,11 +411,12 @@ void ComponentLibrary::renderPreviewBox(SDL_Renderer* renderer, TTF_Font* font, 
     SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
 
     if (compName == "Resistor") {
-        fillRectLocal(-16, -8, 32, 16, fillColor);
         SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
-        drawTransformedLine(-32, 0, -16, 0); drawTransformedLine(16, 0, 32, 0);
-        drawTransformedLine(-16, -8, 16, -8); drawTransformedLine(16, -8, 16, 8);
-        drawTransformedLine(16, 8, -16, 8); drawTransformedLine(-16, 8, -16, -8);
+        drawTransformedLine(-32, 0, -20, 0);
+        constexpr float x[] = {-20, -15, -10, -5, 0, 5, 10, 15, 20};
+        constexpr float y[] = {0, -8, 8, -8, 8, -8, 8, -8, 0};
+        for (int i = 0; i < 8; ++i) drawTransformedLine(x[i], y[i], x[i + 1], y[i + 1]);
+        drawTransformedLine(20, 0, 32, 0);
     }
     else if (compName == "Capacitor") {
         fillRectLocal(-6, -12, 3, 24, strokeColor); fillRectLocal(3, -12, 3, 24, strokeColor);
@@ -419,17 +442,32 @@ void ComponentLibrary::renderPreviewBox(SDL_Renderer* renderer, TTF_Font* font, 
             }
         }
     }
+    else if (compName == "DC Source" || compName == "AC Source") {
+        fillCircleLocal(0, 0, 16, fillColor);
+        SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+        drawTransformedCircle(0, 0, 16);
+        drawTransformedLine(0, -30, 0, -16); drawTransformedLine(0, 16, 0, 30);
+        if (compName == "DC Source") {
+            drawTransformedLine(-6, -6, 6, -6); drawTransformedLine(0, -12, 0, 0);
+            drawTransformedLine(-6, 7, 6, 7);
+        } else {
+            for (int i = 0; i < 20; ++i) {
+                float x1 = -10.0f + i; float x2 = x1 + 1.0f;
+                drawTransformedLine(x1, 5.0f * std::sin(x1 * PI / 10.0f), x2, 5.0f * std::sin(x2 * PI / 10.0f));
+            }
+        }
+    }
     else if (compName == "Battery") {
         SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
-        drawTransformedLine(-20, 0, -6, 0); drawTransformedLine(6, 0, 20, 0);
-        drawTransformedLine(-6, -16, -6, 16); drawTransformedLine(-2, -8, -2, 8);
-        drawTransformedLine(2, -16, 2, 16); drawTransformedLine(6, -8, 6, 8);
+        drawTransformedLine(0, -30, 0, -9); drawTransformedLine(0, 9, 0, 30);
+        drawTransformedLine(-15, -9, 15, -9); drawTransformedLine(-8, -4, 8, -4);
+        drawTransformedLine(-15, 4, 15, 4); drawTransformedLine(-8, 9, 8, 9);
     }
     else if (compName == "Clock Generator") {
         fillCircleLocal(0, 0, 16, fillColor);
         SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
         drawTransformedCircle(0, 0, 16);
-        drawTransformedLine(-30, 0, -16, 0); drawTransformedLine(16, 0, 30, 0);
+        drawTransformedLine(0, -30, 0, -16); drawTransformedLine(0, 16, 0, 30);
         drawTransformedLine(-10, 5, -4, 5); drawTransformedLine(-4, 5, -4, -5);
         drawTransformedLine(-4, -5, 4, -5); drawTransformedLine(4, -5, 4, 5); drawTransformedLine(4, 5, 10, 5);
     }
@@ -451,12 +489,14 @@ void ComponentLibrary::renderPreviewBox(SDL_Renderer* renderer, TTF_Font* font, 
         SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
         drawTransformedLine(-32, 0, -12, 0); drawTransformedLine(12, 0, 32, 0);
         drawTransformedLine(12, -12, 12, 12);
+        drawTransformedLine(2, -13, 11, -22); drawTransformedLine(11, -22, 7, -20); drawTransformedLine(11, -22, 9, -18);
+        drawTransformedLine(8, -8, 17, -17); drawTransformedLine(17, -17, 13, -15); drawTransformedLine(17, -17, 15, -13);
     }
     else if (compName == "7-Segment Display") {
         fillRectLocal(-20, -32, 40, 64, {32, 32, 36, 255});
         SDL_SetRenderDrawColor(renderer, 60, 65, 70, 255);
-        drawTransformedLine(-20, -32, 20, -32); drawTransformedLine(20, -32, 20, 64);
-        drawTransformedLine(20, 64, -20, 64); drawTransformedLine(-20, 64, -20, -32);
+        drawTransformedLine(-20, -32, 20, -32); drawTransformedLine(20, -32, 20, 32);
+        drawTransformedLine(20, 32, -20, 32); drawTransformedLine(-20, 32, -20, -32);
         SDL_Color off = {55, 50, 50, 255};
         fillRectLocal(-10, -24, 20, 3, off); fillRectLocal(10, -24, 3, 22, off);
         fillRectLocal(10, 2, 3, 22, off); fillRectLocal(-10, 24, 20, 3, off);
@@ -524,6 +564,29 @@ void ComponentLibrary::renderPreviewBox(SDL_Renderer* renderer, TTF_Font* font, 
         drawTransformedLine(20, -15, 40, -15); drawTransformedLine(20, 15, 40, 15);
         drawTransformedLine(-20, 10, -12, 15); drawTransformedLine(-12, 15, -20, 20);
     }
+    else if (compName == "Voltmeter" || compName == "Ammeter") {
+        fillCircleLocal(0, 0, 17, fillColor);
+        SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+        drawTransformedCircle(0, 0, 17);
+        drawTransformedLine(0, -30, 0, -17); drawTransformedLine(0, 17, 0, 30);
+        if (compName == "Voltmeter") {
+            drawTransformedLine(-8, -8, 0, 9); drawTransformedLine(0, 9, 8, -8);
+        } else {
+            drawTransformedLine(-8, 9, 0, -9); drawTransformedLine(0, -9, 8, 9); drawTransformedLine(-5, 3, 5, 3);
+        }
+    }
+    else if (compName == "Oscilloscope") {
+        fillRectLocal(-35, -24, 70, 48, {35, 45, 52, 255});
+        fillRectLocal(-27, -17, 54, 34, {205, 230, 210, 255});
+        SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+        drawTransformedLine(-35, -24, 35, -24); drawTransformedLine(35, -24, 35, 24);
+        drawTransformedLine(35, 24, -35, 24); drawTransformedLine(-35, 24, -35, -24);
+        SDL_SetRenderDrawColor(renderer, 30, 130, 70, 255);
+        for (int i = 0; i < 20; ++i) {
+            float x1 = -24.0f + 48.0f * i / 20.0f, x2 = -24.0f + 48.0f * (i + 1) / 20.0f;
+            drawTransformedLine(x1, 7.0f * std::sin(x1 * PI / 13.0f), x2, 7.0f * std::sin(x2 * PI / 13.0f));
+        }
+    }
     else if (compName == "Diode") {
         fillTriangleLocal(-12, -12, -12, 12, 12, 0, fillColor);
         SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
@@ -537,6 +600,19 @@ void ComponentLibrary::renderPreviewBox(SDL_Renderer* renderer, TTF_Font* font, 
         drawTransformedLine(-15, -20, -15, 20); drawTransformedLine(-15, -20, 20, 0); drawTransformedLine(-15, 20, 20, 0);
         drawTransformedLine(-35, -8, -15, -8); drawTransformedLine(-35, 8, -15, 8); drawTransformedLine(20, 0, 35, 0);
         drawTransformedLine(-12, -10, -6, -10); drawTransformedLine(-12, 10, -6, 10); drawTransformedLine(-9, 7, -9, 13);
+    }
+    else if (compName == "Microcontroller" || compName == "External Memory") {
+        const float halfW = compName == "Microcontroller" ? 30.0f : 26.0f;
+        const float halfH = 40.0f;
+        fillRectLocal(-halfW, -halfH, halfW * 2.0f, halfH * 2.0f, fillColor);
+        SDL_SetRenderDrawColor(renderer, strokeColor.r, strokeColor.g, strokeColor.b, 255);
+        drawTransformedLine(-halfW, -halfH, halfW, -halfH); drawTransformedLine(halfW, -halfH, halfW, halfH);
+        drawTransformedLine(halfW, halfH, -halfW, halfH); drawTransformedLine(-halfW, halfH, -halfW, -halfH);
+        for (int i = 0; i < 6; ++i) {
+            const float y = -28.0f + i * 11.0f;
+            drawTransformedLine(-halfW - 7, y, -halfW, y); drawTransformedLine(halfW, y, halfW + 7, y);
+        }
+        drawTransformedLine(-8, -halfH, -4, -halfH + 5); drawTransformedLine(-4, -halfH + 5, 4, -halfH + 5); drawTransformedLine(4, -halfH + 5, 8, -halfH);
     }
     else if (compName == "ADC" || compName == "DAC") {
         fillRectLocal(-20, -35, 40, 70, fillColor);

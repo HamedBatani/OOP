@@ -13,6 +13,7 @@ Button::Button(const SDL_FRect& rect, std::string label, SDL_Color normalColor, 
           hoverColor_(hoverColor), textColor_(textColor), hovered_(false), icon_(icon) {}
 
 void Button::setHovered(bool hovered) { hovered_ = hovered; }
+void Button::setRect(const SDL_FRect& rect) { rect_ = rect; }
 
 bool Button::contains(float mouseX, float mouseY) const {
     return mouseX >= rect_.x && mouseX <= rect_.x + rect_.w && mouseY >= rect_.y && mouseY <= rect_.y + rect_.h;
@@ -144,19 +145,23 @@ void Button::render(SDL_Renderer* renderer, TTF_Font* font) const {
     SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
     if (!textTexture) { SDL_DestroySurface(textSurface); return; }
 
-    float iconSize = 18.0f * scale;
-    float totalWidth = static_cast<float>(textSurface->w) * scale;
-    if (icon_ != IconType::None) totalWidth += iconSize + 8.0f * scale;
+    const float rawIconWidth = icon_ == IconType::None ? 0.0f : 26.0f;
+    const float fitScale = std::min(1.0f, std::max(0.55f,
+            (rect_.w - 14.0f) / (static_cast<float>(textSurface->w) + rawIconWidth)));
+    const float contentScale = scale * fitScale;
+    float iconSize = 18.0f * contentScale;
+    float totalWidth = static_cast<float>(textSurface->w) * contentScale;
+    if (icon_ != IconType::None) totalWidth += iconSize + 8.0f * contentScale;
 
     float startX = x + (w - totalWidth) / 2.0f;
-    float textY = y + (h - static_cast<float>(textSurface->h) * scale) / 2.0f;
+    float textY = y + (h - static_cast<float>(textSurface->h) * contentScale) / 2.0f;
 
     if (icon_ != IconType::None) {
         drawVectorIcon(renderer, startX, y + (h - iconSize) / 2.0f, iconSize);
-        startX += iconSize + 8.0f * scale;
+        startX += iconSize + 8.0f * contentScale;
     }
 
-    const SDL_FRect textRect{startX, textY, static_cast<float>(textSurface->w) * scale, static_cast<float>(textSurface->h) * scale};
+    const SDL_FRect textRect{startX, textY, static_cast<float>(textSurface->w) * contentScale, static_cast<float>(textSurface->h) * contentScale};
     SDL_RenderTexture(renderer, textTexture, nullptr, &textRect);
     SDL_DestroyTexture(textTexture);
     SDL_DestroySurface(textSurface);

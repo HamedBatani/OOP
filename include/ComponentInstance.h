@@ -9,6 +9,8 @@
 #include <SDL3/SDL.h>
 #include "Point.h"
 #include "Component.h"
+#include "ExternalMemory.h"
+#include "MicrocontrollerCore.h"
 
 struct ComponentPin {
     std::string designation;
@@ -56,10 +58,13 @@ public:
 
     int activeKeypadRow{-1};
     int activeKeypadCol{-1};
+    DigitalState lastLcdEnableState{DigitalState::Low};
 
     float potWiperPosition{0.5f}; // وضعیت لغزنده پتانسیومتر
 
     std::shared_ptr<Component> coreComponent;
+    std::shared_ptr<MicrocontrollerCore> microcontroller;
+    std::shared_ptr<ExternalMemory> externalMemory;
 
     ComponentInstance(std::string typeName, std::string id, std::string val, Point worldLocation)
             : type(std::move(typeName)), labelId(std::move(id)), valueStr(std::move(val)), worldPos(worldLocation) {
@@ -86,6 +91,8 @@ public:
         else if (type == "Flip-Flop") { coreComponent = std::make_shared<FlipFlopDComponent>(); inputCount = 2; }
         else if (type == "ADC") { coreComponent = std::make_shared<AdcComponent>(); }
         else if (type == "DAC") { coreComponent = std::make_shared<DacComponent>(); }
+        else if (type == "Microcontroller") { microcontroller = std::make_shared<MicrocontrollerCore>(); }
+        else if (type == "External Memory") { externalMemory = std::make_shared<ExternalMemory>(); }
 
         if (type == "Flip-Flop" || type == "Oscilloscope") { worldWidth = 80.0f; worldHeight = 60.0f; }
         else if (type == "Op-Amp" || type == "AND Gate" || type == "OR Gate" || type == "XOR Gate" || type == "NAND Gate") { worldWidth = 80.0f; worldHeight = 50.0f; }
@@ -98,6 +105,8 @@ public:
         else if (type == "Ground") { worldWidth = 32.0f; worldHeight = 32.0f; }
         else if (type == "ADC") { worldWidth = 90.0f; worldHeight = std::max(70.0f, static_cast<float>(adcResolutionBits) * 15.0f); }
         else if (type == "DAC") { worldWidth = 90.0f; worldHeight = std::max(70.0f, static_cast<float>(dacResolutionBits) * 15.0f); }
+        else if (type == "Microcontroller") { worldWidth = 120.0f; worldHeight = 180.0f; }
+        else if (type == "External Memory") { worldWidth = 100.0f; worldHeight = 150.0f; }
 
         initializeBasePins();
         updatePinPositions();
@@ -143,6 +152,20 @@ public:
             pins.push_back({"Vref+", {0.0f, -worldHeight/2.0f}, {0.0f, 0.0f}}); pins.push_back({"Vout",  {45.0f, 0.0f}, {0.0f, 0.0f}}); pins.push_back({"Vref-", {0.0f, worldHeight/2.0f}, {0.0f, 0.0f}});
             float startY = -((dacResolutionBits - 1) * 15.0f) / 2.0f;
             for(int i = 0; i < dacResolutionBits; ++i) { pins.push_back({"D" + std::to_string(i), {-45.0f, startY + (i * 15.0f)}, {0.0f, 0.0f}}); }
+        } else if (type == "Microcontroller") {
+            for (int i = 0; i < 8; ++i) {
+                const float y = -70.0f + i * 20.0f;
+                pins.push_back({"PB" + std::to_string(i), {-60.0f, y}, {0.0f, 0.0f}});
+                pins.push_back({"PA" + std::to_string(i), {60.0f, y}, {0.0f, 0.0f}});
+            }
+        } else if (type == "External Memory") {
+            for (int i = 0; i < 8; ++i) {
+                const float y = -60.0f + i * 17.0f;
+                pins.push_back({"A" + std::to_string(i), {-50.0f, y}, {0.0f, 0.0f}});
+                pins.push_back({"D" + std::to_string(i), {50.0f, y}, {0.0f, 0.0f}});
+            }
+            pins.push_back({"CS", {-15.0f, -75.0f}, {0.0f, 0.0f}});
+            pins.push_back({"WE", {15.0f, -75.0f}, {0.0f, 0.0f}});
         }
     }
 
@@ -167,7 +190,8 @@ public:
     void updatePinPositions() {
         for (auto& pin : pins) {
             float lx = pin.localOffset.x, ly = pin.localOffset.y;
-            if (isMirroredH) lx = -lx; if (isMirroredV) ly = -ly;
+            if (isMirroredH) lx = -lx;
+            if (isMirroredV) ly = -ly;
             float rx = lx, ry = ly;
             if (rotationDegrees == 90) { rx = -ly; ry = lx; } else if (rotationDegrees == 180) { rx = -lx; ry = -ly; } else if (rotationDegrees == 270) { rx = ly; ry = -lx; }
             pin.calculatedWorldPos = { worldPos.x + rx, worldPos.y + ry };

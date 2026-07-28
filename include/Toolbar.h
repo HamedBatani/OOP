@@ -9,6 +9,7 @@
 class Toolbar {
 public:
     Toolbar(float x, float y, float width, float height);
+    void setBounds(float x, float y, float width, float height);
     void handleEvent(const SDL_Event& event, std::string& actionTriggered);
     void render(SDL_Renderer* renderer, TTF_Font* font) const;
 

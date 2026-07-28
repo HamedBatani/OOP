@@ -30,6 +30,7 @@ private:
     std::vector<bool> ioPins_;
     FirmwareLoader::FlashMemory flashMemory_;
     bool isRunning_{false};
+    bool firmwareLoaded_{false};
 
 public:
     // --- پیاده‌سازی شیءگرا پورت‌ها (بند 6.7) ---
@@ -61,12 +62,15 @@ public:
 
     bool loadHexFirmware(const std::string& hexFilePath) {
         bool success = FirmwareLoader::loadHexFile(hexFilePath, flashMemory_);
+        firmwareLoaded_ = success;
         if (success) reset();
         return success;
     }
 
-    void start() { isRunning_ = true; }
+    void start() { if (firmwareLoaded_) isRunning_ = true; }
     void stop() { isRunning_ = false; }
+    bool isRunning() const { return isRunning_; }
+    bool hasFirmware() const { return firmwareLoaded_; }
 
     void reset() {
         pc_ = 0;
@@ -90,7 +94,7 @@ public:
 
         switch (opcode) {
             case MOV_REG_IMM: {
-                if (pc_ + 2 >= flashMemory_.memoryArray.size()) { stop(); return; }
+                if (static_cast<size_t>(pc_) + 2 >= flashMemory_.memoryArray.size()) { stop(); return; }
                 uint8_t destReg = flashMemory_.memoryArray[pc_ + 1];
                 uint8_t value   = flashMemory_.memoryArray[pc_ + 2];
                 setRegister(destReg, value);
@@ -98,7 +102,7 @@ public:
                 break;
             }
             case MOV_REG_REG: {
-                if (pc_ + 2 >= flashMemory_.memoryArray.size()) { stop(); return; }
+                if (static_cast<size_t>(pc_) + 2 >= flashMemory_.memoryArray.size()) { stop(); return; }
                 uint8_t destReg = flashMemory_.memoryArray[pc_ + 1];
                 uint8_t srcReg  = flashMemory_.memoryArray[pc_ + 2];
                 setRegister(destReg, getRegister(srcReg));
@@ -106,31 +110,31 @@ public:
                 break;
             }
             case ADD_ACC_IMM: {
-                if (pc_ + 1 >= flashMemory_.memoryArray.size()) { stop(); return; }
+                if (static_cast<size_t>(pc_) + 1 >= flashMemory_.memoryArray.size()) { stop(); return; }
                 accumulator_ += flashMemory_.memoryArray[pc_ + 1];
                 pc_ += 2;
                 break;
             }
             case ADD_ACC_REG: {
-                if (pc_ + 1 >= flashMemory_.memoryArray.size()) { stop(); return; }
+                if (static_cast<size_t>(pc_) + 1 >= flashMemory_.memoryArray.size()) { stop(); return; }
                 accumulator_ += getRegister(flashMemory_.memoryArray[pc_ + 1]);
                 pc_ += 2;
                 break;
             }
             case JMP: {
-                if (pc_ + 2 >= flashMemory_.memoryArray.size()) { stop(); return; }
+                if (static_cast<size_t>(pc_) + 2 >= flashMemory_.memoryArray.size()) { stop(); return; }
                 pc_ = (flashMemory_.memoryArray[pc_ + 1] << 8) | flashMemory_.memoryArray[pc_ + 2];
                 break;
             }
             case SETB: {
-                if (pc_ + 1 >= flashMemory_.memoryArray.size()) { stop(); return; }
+                if (static_cast<size_t>(pc_) + 1 >= flashMemory_.memoryArray.size()) { stop(); return; }
                 uint8_t targetPin = flashMemory_.memoryArray[pc_ + 1];
                 if (targetPin < ioPins_.size()) ioPins_[targetPin] = true;
                 pc_ += 2;
                 break;
             }
             case CLR: {
-                if (pc_ + 1 >= flashMemory_.memoryArray.size()) { stop(); return; }
+                if (static_cast<size_t>(pc_) + 1 >= flashMemory_.memoryArray.size()) { stop(); return; }
                 uint8_t targetPin = flashMemory_.memoryArray[pc_ + 1];
                 if (targetPin < ioPins_.size()) ioPins_[targetPin] = false;
                 pc_ += 2;
@@ -140,14 +144,14 @@ public:
                 // پیاده‌سازی دستورات مدیریت پورت (بند 6.7)
                 // ----------------------------------------------------
             case OUT_PORTA: {
-                if (pc_ + 1 >= flashMemory_.memoryArray.size()) { stop(); return; }
+                if (static_cast<size_t>(pc_) + 1 >= flashMemory_.memoryArray.size()) { stop(); return; }
                 uint8_t srcReg = flashMemory_.memoryArray[pc_ + 1];
                 portA_.write(getRegister(srcReg)); // مقدار ثبات را روی پورت A قرار می‌دهد
                 pc_ += 2;
                 break;
             }
             case IN_PORTA: {
-                if (pc_ + 1 >= flashMemory_.memoryArray.size()) { stop(); return; }
+                if (static_cast<size_t>(pc_) + 1 >= flashMemory_.memoryArray.size()) { stop(); return; }
                 uint8_t destReg = flashMemory_.memoryArray[pc_ + 1];
                 setRegister(destReg, portA_.read()); // پین‌های فیزیکی را خوانده و در ثبات ذخیره می‌کند
                 pc_ += 2;

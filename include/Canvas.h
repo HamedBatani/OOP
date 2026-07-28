@@ -31,13 +31,20 @@ public:
     }
 
     void setZoom(float zoom) {
-        zoom_ = std::max(zoom, minZoom_);
+        zoom_ = std::clamp(zoom, minZoom_, maxZoom_);
     }
 
     void zoomBy(float factor) {
         if (factor > 0.0f) {
             setZoom(zoom_ * factor);
         }
+    }
+
+    void zoomAt(const Point& screenPoint, float factor) {
+        if (factor <= 0.0f) return;
+        const Point worldBefore = screenToWorld(screenPoint);
+        setZoom(zoom_ * factor);
+        cameraPosition_ = worldBefore - (screenPoint / zoom_);
     }
 
     Point cameraPosition() const {
@@ -93,7 +100,8 @@ public:
     }
 
 private:
-    static constexpr float minZoom_{0.01f};
+    static constexpr float minZoom_{0.1f};
+    static constexpr float maxZoom_{8.0f};
 
     float width_{0.0f};
     float height_{0.0f};

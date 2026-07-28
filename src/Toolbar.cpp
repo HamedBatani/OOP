@@ -1,7 +1,7 @@
 // src/Toolbar.cpp
 #include "Toolbar.h"
 
-Toolbar::Toolbar(float x, float y, float width, float height) : bounds_{x, y, width, 45.0f} {
+Toolbar::Toolbar(float x, float y, float width, float height) : bounds_{x, y, width, height} {
     SDL_Color bg{24, 24, 24, 255};
     SDL_Color hover{55, 60, 70, 255};
     SDL_Color text{220, 220, 225, 255};
@@ -55,5 +55,21 @@ void Toolbar::render(SDL_Renderer* renderer, TTF_Font* font) const {
 
     for (const auto& btn : tools_) {
         btn.render(renderer, font);
+    }
+}
+
+void Toolbar::setBounds(float x, float y, float width, float height) {
+    bounds_ = {x, y, width, height};
+    if (tools_.empty()) return;
+
+    constexpr float margin = 8.0f;
+    constexpr float gap = 6.0f;
+    const float available = std::max(1.0f, width - margin * 2.0f - gap * static_cast<float>(tools_.size() - 1));
+    const float buttonWidth = available / static_cast<float>(tools_.size());
+    const float buttonHeight = std::max(28.0f, height - 10.0f);
+    float buttonX = x + margin;
+    for (auto& tool : tools_) {
+        tool.setRect({buttonX, y + 5.0f, buttonWidth, buttonHeight});
+        buttonX += buttonWidth + gap;
     }
 }

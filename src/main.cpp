@@ -11,6 +11,7 @@
 #include "ComponentInstance.h"
 #include "Wire.h"
 #include "Junction.h"
+#include "CircuitSimulator.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
@@ -43,15 +44,16 @@ namespace {
     }
 
     TTF_Font* loadFont() {
-        const char* path = "C:\\Users\\bilgi\\OneDrive\\Desktop\\DejaVuSans.ttf";
-        TTF_Font* font = TTF_OpenFont(path, 24);
-        if (!font) {
-            std::cerr << "Font loading failed: " << SDL_GetError() << '\n';
-            std::cin.get();
-            TTF_Quit();
-            SDL_Quit();
+        const char* candidates[] = {
+            "data/DejaVuSans.ttf",
+            "../data/DejaVuSans.ttf",
+            "../../data/DejaVuSans.ttf"
+        };
+        for (const char* path : candidates) {
+            if (TTF_Font* font = TTF_OpenFont(path, 24)) return font;
         }
-        return font;
+        std::cerr << "Font loading failed: " << SDL_GetError() << '\n';
+        return nullptr;
     }
 
     Wire* findWireByUid(std::vector<Wire>& wires, const std::string& uid) {
@@ -81,7 +83,7 @@ namespace {
     }
 }
 
-int main(int, char**) {
+int main(int argc, char** argv) {
     if (!SDL_Init(SDL_INIT_VIDEO)) return 1;
     if (!TTF_Init()) { SDL_Quit(); return 1; }
 
@@ -90,13 +92,15 @@ int main(int, char**) {
 
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
     if (!renderer) { SDL_DestroyWindow(window); TTF_Quit(); SDL_Quit(); return 1; }
+    SDL_SetRenderVSync(renderer, 1);
 
     SDL_StartTextInput(window);
     TTF_Font* font = loadFont();
     if (!font) { SDL_DestroyRenderer(renderer); SDL_DestroyWindow(window); TTF_Quit(); SDL_Quit(); return 1; }
 
     StartMenu startMenu;
-    AppState currentState = AppState::MainMenu;
+    const bool startInEditor = argc > 1 && std::string(argv[1]) == "--new-project";
+    AppState currentState = startInEditor ? AppState::NewProject : AppState::MainMenu;
     bool running = true;
 
     Toolbar toolbar{ 0, 0, 800, 45 };
@@ -146,7 +150,6 @@ int main(int, char**) {
     int draggingWireIndex = -1;
     Point wireDragStartWorldMouse{0.0f, 0.0f};
     std::vector<Point> wireDragStartRoutingPoints;
-    int hoveredWireIndexForDrag = -1;
 
     bool isDraggingWireEndpoint = false;
     int draggingEndpointWireIndex = -1;
@@ -156,6 +159,17 @@ int main(int, char**) {
     SimState simState = SimState::Stopped;
     uint64_t simTimeMs = 0;
     uint64_t lastTicks = SDL_GetTicks();
+
+    int windowWidth = WindowWidth;
+    int windowHeight = WindowHeight;
+    float sidebarWidth = 200.0f;
+    constexpr float toolbarHeight = 45.0f;
+
+    if (startInEditor) {
+        const PageSize& size = startMenu.getSelectedPageSize();
+        canvas = std::make_unique<Canvas>(static_cast<float>(size.width), static_cast<float>(size.height));
+        canvasRenderer = std::make_unique<CanvasRenderer>(*canvas);
+    }
 
     auto updateConnectedWires = [&](const ComponentInstance& comp) {
         for (auto& wire : circuitWires) {
@@ -222,12 +236,22 @@ int main(int, char**) {
     };
 
     while (running && currentState != AppState::Exit) {
+        SDL_GetWindowSize(window, &windowWidth, &windowHeight);
+        sidebarWidth = std::clamp(windowWidth * 0.24f, 200.0f, 300.0f);
+        startMenu.setViewportSize(windowWidth, windowHeight);
+        toolbar.setBounds(0.0f, 0.0f, static_cast<float>(windowWidth), toolbarHeight);
+        compLib.setBounds(0.0f, toolbarHeight, sidebarWidth,
+                          std::max(320.0f, windowHeight - toolbarHeight));
+
         uint64_t currentTicks = SDL_GetTicks();
         uint64_t deltaMs = currentTicks - lastTicks;
         lastTicks = currentTicks;
 
+        bool advanceSequentialThisFrame = false;
         if (simState == SimState::Running) {
+            const uint64_t previousSimTimeMs = simTimeMs;
             simTimeMs += deltaMs;
+            advanceSequentialThisFrame = (previousSimTimeMs / 100) != (simTimeMs / 100);
             for (auto& comp : placedComponents) {
                 if (comp.type == "Clock Generator") {
                     uint64_t period = 500;
@@ -236,60 +260,8 @@ int main(int, char**) {
             }
         }
 
-        if (simState == SimState::Running || simState == SimState::Paused) {
-            for (auto& wire : circuitWires) {
-                wire.currentLogicState = DigitalState::Undefined;
-                wire.currentVoltage = 0.0f;
-
-                for (const auto& comp : placedComponents) {
-                    if (wire.startCompId == comp.labelId || wire.endCompId == comp.labelId) {
-                        if (comp.type == "Potentiometer") {
-                            wire.currentVoltage = comp.potWiperPosition * 5.0f;
-                            wire.currentLogicState = LogicEngine::voltageToLogic(wire.currentVoltage);
-                        }
-                        else if (comp.type == "Clock Generator" || comp.type == "Push Button") {
-                            wire.currentVoltage = comp.interactiveStateBool ? 5.0f : 0.0f;
-                            wire.currentLogicState = comp.interactiveStateBool ? DigitalState::High : DigitalState::Low;
-                        }
-                        else if (comp.type == "Switch") {
-                            wire.currentVoltage = comp.interactiveStateBool ? 5.0f : 0.0f;
-                            wire.currentLogicState = comp.interactiveStateBool ? DigitalState::High : DigitalState::Undefined;
-                        }
-                        else if (comp.type == "Ground") {
-                            wire.currentVoltage = 0.0f;
-                            wire.currentLogicState = DigitalState::Low;
-                        }
-                        else if (comp.type == "DC Source" || comp.type == "Battery") {
-                            wire.currentVoltage = 5.0f;
-                            wire.currentLogicState = DigitalState::High;
-                        }
-                    }
-                }
-            }
-
-            for (auto& comp : placedComponents) {
-                if (comp.type == "ADC") {
-                    float adcInputVoltage = 0.0f;
-                    for (auto& wire : circuitWires) {
-                        if ((wire.startCompId == comp.labelId && wire.startPinName == "Vin") ||
-                            (wire.endCompId == comp.labelId && wire.endPinName == "Vin")) {
-                            adcInputVoltage = wire.currentVoltage;
-                            break;
-                        }
-                    }
-                    std::vector<DigitalState> outBits = AdcComponent::performConversion(adcInputVoltage, 5.0f, 0.0f, comp.adcResolutionBits);
-                    for (int i = 0; i < comp.adcResolutionBits; ++i) {
-                        std::string targetPin = "D" + std::to_string(i);
-                        for (auto& wire : circuitWires) {
-                            if ((wire.startCompId == comp.labelId && wire.startPinName == targetPin) ||
-                                (wire.endCompId == comp.labelId && wire.endPinName == targetPin)) {
-                                wire.currentLogicState = outBits[i];
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        if (simState == SimState::Running || simState == SimState::Paused)
+            CircuitSimulator::step(placedComponents, circuitWires, advanceSequentialThisFrame);
 
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -310,10 +282,30 @@ int main(int, char**) {
                             activeEditField = (activeEditField + 1) % maxEditFields;
                         } else if (event.key.key == SDLK_RETURN || event.key.key == SDLK_KP_ENTER) {
                             if (!editLabelBuf.empty() && editingComponentIndex >= 0) {
-                                placedComponents[editingComponentIndex].labelId = editLabelBuf;
-                                placedComponents[editingComponentIndex].valueStr = editValueBuf;
+                                auto& edited = placedComponents[editingComponentIndex];
+                                const bool duplicateLabel = std::any_of(placedComponents.begin(), placedComponents.end(),
+                                    [&](const ComponentInstance& other) { return &other != &edited && other.labelId == editLabelBuf; });
+                                if (duplicateLabel) {
+                                    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "Invalid designator",
+                                                             "Every component designator must be unique.", window);
+                                    continue;
+                                }
 
-                                if (placedComponents[editingComponentIndex].type == "Colored LED") {
+                                const std::string previousLabel = edited.labelId;
+                                edited.labelId = editLabelBuf;
+                                edited.valueStr = editValueBuf;
+                                if (previousLabel != edited.labelId) {
+                                    for (auto& wire : circuitWires) {
+                                        if (wire.startCompId == previousLabel) wire.startCompId = edited.labelId;
+                                        if (wire.endCompId == previousLabel) wire.endCompId = edited.labelId;
+                                        if (wire.startAnchor.isPinLock() && wire.startAnchor.lockedCompId == previousLabel)
+                                            wire.startAnchor.lockedCompId = edited.labelId;
+                                        if (wire.endAnchor.isPinLock() && wire.endAnchor.lockedCompId == previousLabel)
+                                            wire.endAnchor.lockedCompId = edited.labelId;
+                                    }
+                                }
+
+                                if (edited.type == "Colored LED") {
                                     if (editValueBuf == "Green" || editValueBuf == "green") placedComponents[editingComponentIndex].ledColorMode = 1;
                                     else if (editValueBuf == "Blue" || editValueBuf == "blue") placedComponents[editingComponentIndex].ledColorMode = 2;
                                     else placedComponents[editingComponentIndex].ledColorMode = 0;
@@ -322,23 +314,39 @@ int main(int, char**) {
                                     try { placedComponents[editingComponentIndex].activeSevenSegmentByte = static_cast<uint8_t>(std::stoul(editValueBuf, nullptr, 16)); }
                                     catch (...) { placedComponents[editingComponentIndex].activeSevenSegmentByte = 0x5B; }
                                 }
-                                else if (placedComponents[editingComponentIndex].type == "ADC") {
+                                else if (edited.type == "ADC") {
                                     try {
-                                        placedComponents[editingComponentIndex].adcResolutionBits = std::max(1, std::stoi(editValueBuf));
-                                        placedComponents[editingComponentIndex].adcConversionDelayNs = std::stof(editDelayBuf);
+                                        edited.adcResolutionBits = std::clamp(std::stoi(editValueBuf), 1, 16);
+                                        edited.adcConversionDelayNs = std::max(0.0f, std::stof(editDelayBuf));
                                     } catch(...) {}
                                     placedComponents[editingComponentIndex].worldHeight = std::max(70.0f, placedComponents[editingComponentIndex].adcResolutionBits * 15.0f);
                                     placedComponents[editingComponentIndex].initializeBasePins();
                                     placedComponents[editingComponentIndex].updatePinPositions();
                                 }
-                                else if (placedComponents[editingComponentIndex].type == "DAC") {
+                                else if (edited.type == "DAC") {
                                     try {
-                                        placedComponents[editingComponentIndex].dacResolutionBits = std::max(1, std::stoi(editValueBuf));
-                                        placedComponents[editingComponentIndex].dacConversionDelayNs = std::stof(editDelayBuf);
+                                        edited.dacResolutionBits = std::clamp(std::stoi(editValueBuf), 1, 16);
+                                        edited.dacConversionDelayNs = std::max(0.0f, std::stof(editDelayBuf));
                                     } catch(...) {}
                                     placedComponents[editingComponentIndex].worldHeight = std::max(70.0f, placedComponents[editingComponentIndex].dacResolutionBits * 15.0f);
                                     placedComponents[editingComponentIndex].initializeBasePins();
                                     placedComponents[editingComponentIndex].updatePinPositions();
+                                } else if (edited.coreComponent && edited.coreComponent->getComponentClass() == ComponentClass::DigitalLogic) {
+                                    try { edited.propagationDelayNs = std::max(0.0f, std::stof(editValueBuf)); } catch (...) {}
+                                } else if (edited.type == "Microcontroller" && edited.microcontroller && !editValueBuf.empty()) {
+                                    const bool loaded = edited.microcontroller->loadHexFirmware(editValueBuf);
+                                    SDL_ShowSimpleMessageBox(loaded ? SDL_MESSAGEBOX_INFORMATION : SDL_MESSAGEBOX_ERROR,
+                                                             loaded ? "Firmware loaded" : "Firmware error",
+                                                             loaded ? "The Intel HEX firmware was validated and loaded."
+                                                                    : "The firmware could not be loaded. Check the path and HEX checksum.",
+                                                             window);
+                                } else if (edited.type == "External Memory") {
+                                    try {
+                                        const std::size_t size = static_cast<std::size_t>(std::clamp(std::stoll(editValueBuf), 16LL, 65536LL));
+                                        edited.externalMemory = std::make_shared<ExternalMemory>(size);
+                                    } catch (...) {
+                                        edited.valueStr = std::to_string(edited.externalMemory ? edited.externalMemory->size() : 256);
+                                    }
                                 }
                             }
                             isPropertiesDialogOpen = false;
@@ -388,7 +396,16 @@ int main(int, char**) {
                                         comp.isMirroredV = !comp.isMirroredV; comp.updatePinPositions(); updateConnectedWires(comp); propagateWireUpdates();
                                     } else if (selectedOption == 4) {
                                         std::string delId = comp.labelId;
+                                        std::set<std::string> removedWireIds;
+                                        for (const auto& wire : circuitWires)
+                                            if (wire.startCompId == delId || wire.endCompId == delId) removedWireIds.insert(wire.uid);
                                         circuitWires.erase(std::remove_if(circuitWires.begin(), circuitWires.end(), [&](const Wire& w) { return w.startCompId == delId || w.endCompId == delId; }), circuitWires.end());
+                                        for (auto& wire : circuitWires) {
+                                            if (wire.startAnchor.isWireLock() && removedWireIds.count(wire.startAnchor.lockedWireUid))
+                                                wire.startAnchor = WireAnchor::makeFree(wire.routingPoints.empty() ? Point{} : wire.routingPoints.front());
+                                            if (wire.endAnchor.isWireLock() && removedWireIds.count(wire.endAnchor.lockedWireUid))
+                                                wire.endAnchor = WireAnchor::makeFree(wire.routingPoints.empty() ? Point{} : wire.routingPoints.back());
+                                        }
                                         placedComponents.erase(placedComponents.begin() + contextTargetIndex);
                                     }
                                 }
@@ -406,7 +423,7 @@ int main(int, char**) {
                     }
                 }
 
-                if (event.type == SDL_EVENT_KEY_DOWN) {
+                if (event.type == SDL_EVENT_KEY_DOWN && !compLib.isSearchFocused()) {
                     if (event.key.key == SDLK_ESCAPE) {
                         selectedComponent = "None"; isWireModeActive = false;
                         for (auto& comp : placedComponents) comp.isSelected = false;
@@ -436,7 +453,11 @@ int main(int, char**) {
                             std::vector<std::string> idsToDelete;
                             for(auto& c : placedComponents) if(c.isSelected) idsToDelete.push_back(c.labelId);
                             std::set<std::string> uidsToDelete;
-                            for (auto& w : circuitWires) if (w.isSelected) uidsToDelete.insert(w.uid);
+                            for (const auto& w : circuitWires) {
+                                if (w.isSelected || std::find(idsToDelete.begin(), idsToDelete.end(), w.startCompId) != idsToDelete.end() ||
+                                    std::find(idsToDelete.begin(), idsToDelete.end(), w.endCompId) != idsToDelete.end())
+                                    uidsToDelete.insert(w.uid);
+                            }
 
                             circuitWires.erase(std::remove_if(circuitWires.begin(), circuitWires.end(), [&](const Wire& w) {
                                 return w.isSelected || std::find(idsToDelete.begin(), idsToDelete.end(), w.startCompId) != idsToDelete.end() || std::find(idsToDelete.begin(), idsToDelete.end(), w.endCompId) != idsToDelete.end();
@@ -452,23 +473,25 @@ int main(int, char**) {
                 }
 
                 toolbar.handleEvent(event, activeAction);
-                compLib.handleEvent(event, selectedComponent);
+                const bool libraryHandled = compLib.handleEvent(event, selectedComponent);
 
                 if (activeAction == "Wire Toggle") {
                     isWireModeActive = !isWireModeActive; selectedComponent = "None";
-                    for (auto& comp : placedComponents) comp.isSelected = false; activeAction = "";
+                    for (auto& comp : placedComponents) comp.isSelected = false;
+                    activeAction = "";
                 } else if (activeAction == "Save") { isSaveDialogOpen = true; saveFileName = ""; activeAction = "";
                 } else if (activeAction == "Load") { canvas = nullptr; canvasRenderer = nullptr; placedComponents.clear(); circuitWires.clear(); currentState = AppState::MainMenu; activeAction = "";
                 } else if (activeAction == "Grid Toggle" && canvas) { canvas->grid().setVisible(!canvas->grid().isVisible()); activeAction = "";
                 } else if (activeAction == "Main Menu") { canvas = nullptr; canvasRenderer = nullptr; placedComponents.clear(); circuitWires.clear(); currentState = AppState::MainMenu; activeAction = "";
                 } else if (activeAction == "Run") {
+                    for (auto& comp : placedComponents) if (comp.microcontroller) comp.microcontroller->start();
                     simState = SimState::Running; activeAction = "";
                 } else if (activeAction == "Pause") {
                     if (simState == SimState::Running) simState = SimState::Paused;
                     activeAction = "";
                 } else if (activeAction == "Stop") {
                     simState = SimState::Stopped; simTimeMs = 0;
-                    for (auto& comp : placedComponents) { if (comp.type == "Clock Generator") comp.interactiveStateBool = false; }
+                    CircuitSimulator::reset(placedComponents, circuitWires);
                     activeAction = "";
                     // --- مدیریت دکمه Step (بند 8.4) ---
                 } else if (activeAction == "Step") {
@@ -482,13 +505,24 @@ int main(int, char**) {
                             uint64_t period = 500;
                             comp.interactiveStateBool = ((simTimeMs / period) % 2 == 0);
                         }
+                        if (comp.microcontroller) comp.microcontroller->start();
                         // محل قرارگیری متد stepInstruction() میکرو در آینده
                     }
+                    CircuitSimulator::step(placedComponents, circuitWires);
                     activeAction = "";
                 }
 
-                if (canvas) {
-                    float canvasMouseX = event.motion.x - 200.0f; float canvasMouseY = event.motion.y - 45.0f;
+                if (canvas && !libraryHandled) {
+                    float pointerX = canvas->mouseScreenPosition().x + sidebarWidth;
+                    float pointerY = canvas->mouseScreenPosition().y + toolbarHeight;
+                    if (event.type == SDL_EVENT_MOUSE_MOTION) { pointerX = event.motion.x; pointerY = event.motion.y; }
+                    else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN || event.type == SDL_EVENT_MOUSE_BUTTON_UP) { pointerX = event.button.x; pointerY = event.button.y; }
+                    else if (event.type == SDL_EVENT_MOUSE_WHEEL) { pointerX = event.wheel.mouse_x; pointerY = event.wheel.mouse_y; }
+
+                    const float canvasMouseX = pointerX - sidebarWidth;
+                    const float canvasMouseY = pointerY - toolbarHeight;
+                    const bool pointerInCanvas = pointerX >= sidebarWidth && pointerX < windowWidth &&
+                                                 pointerY >= toolbarHeight && pointerY < windowHeight;
 
                     if (event.type == SDL_EVENT_MOUSE_MOTION) {
                         canvas->setMouseScreenPosition({canvasMouseX, canvasMouseY}); Point currentWorldMouse = canvas->mouseWorldPosition();
@@ -528,20 +562,16 @@ int main(int, char**) {
                                 Point targetPoint = canvas->snapToGrid(currentWorldMouse);
                                 for(auto& comp : placedComponents) { for(auto& pin : comp.pins) { if(pin.isHighlighted) targetPoint = pin.calculatedWorldPos; } }
                                 circuitWires.back().updateOrthogonalRoute(wiringStartPoint, targetPoint);
-                            } else {
-                                hoveredWireIndexForDrag = -1; float wireSensitivity = 8.0f / canvas->zoom();
-                                for (int i = static_cast<int>(circuitWires.size()) - 1; i >= 0; --i) {
-                                    if (circuitWires[i].containsPoint(currentWorldMouse, wireSensitivity)) { hoveredWireIndexForDrag = i; break; }
-                                }
                             }
                         }
                     }
-                    else if (event.type == SDL_EVENT_MOUSE_WHEEL) {
+                    else if (event.type == SDL_EVENT_MOUSE_WHEEL && pointerInCanvas) {
+                        canvas->setMouseScreenPosition({canvasMouseX, canvasMouseY});
                         Point currentWorldMouse = canvas->mouseWorldPosition();
                         bool handledByPotentiometer = false;
 
                         for (auto& comp : placedComponents) {
-                            if (comp.type == "Potentiometer") {
+                            if (comp.type == "Potentiometer" && simState != SimState::Stopped) {
                                 SDL_FRect box = comp.getWorldBoundingBox();
                                 if (currentWorldMouse.x >= box.x && currentWorldMouse.x <= box.x + box.w &&
                                     currentWorldMouse.y >= box.y && currentWorldMouse.y <= box.y + box.h) {
@@ -555,18 +585,19 @@ int main(int, char**) {
                         }
 
                         if (!handledByPotentiometer) {
-                            if (event.wheel.y > 0) canvas->zoomBy(1.1f); else if (event.wheel.y < 0) canvas->zoomBy(0.9f);
+                            if (event.wheel.y > 0) canvas->zoomAt({canvasMouseX, canvasMouseY}, 1.1f);
+                            else if (event.wheel.y < 0) canvas->zoomAt({canvasMouseX, canvasMouseY}, 0.9f);
                         }
 
                         float sensitivity = 10.0f / canvas->zoom();
                         for (auto& comp : placedComponents) comp.checkPinHover(currentWorldMouse, sensitivity);
                     }
-                    else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+                    else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && pointerInCanvas) {
                         if (event.button.button == SDL_BUTTON_MIDDLE) isPanning = true;
                         else if (event.button.button == SDL_BUTTON_RIGHT) {
                             selectedComponent = "None"; isWireModeActive = false;
                             if (isWiring) { isWiring = false; circuitWires.pop_back(); continue; }
-                            if (event.button.x >= 200 && event.button.x <= WindowWidth && event.button.y >= 45 && event.button.y <= WindowHeight) {
+                            if (pointerInCanvas) {
                                 Point worldMouse = canvas->mouseWorldPosition(); bool hitDetected = false; int hitIndex = -1;
                                 for (int i = static_cast<int>(placedComponents.size()) - 1; i >= 0; --i) {
                                     SDL_FRect box = placedComponents[i].getWorldBoundingBox();
@@ -574,8 +605,8 @@ int main(int, char**) {
                                 }
                                 if (hitDetected) {
                                     isContextMenuOpen = true; contextMenuPos = { static_cast<float>(event.button.x), static_cast<float>(event.button.y) }; contextTargetIndex = hitIndex;
-                                    if (contextMenuPos.x > WindowWidth - 160.0f) contextMenuPos.x = WindowWidth - 160.0f;
-                                    if (contextMenuPos.y > WindowHeight - (contextOptions.size() * 35.0f)) contextMenuPos.y = WindowHeight - (contextOptions.size() * 35.0f);
+                                    if (contextMenuPos.x > windowWidth - 160.0f) contextMenuPos.x = windowWidth - 160.0f;
+                                    if (contextMenuPos.y > windowHeight - (contextOptions.size() * 35.0f)) contextMenuPos.y = windowHeight - (contextOptions.size() * 35.0f);
                                 } else {
                                     for (auto& comp : placedComponents) comp.isSelected = false;
                                     for (auto& w : circuitWires) w.isSelected = false;
@@ -583,7 +614,7 @@ int main(int, char**) {
                             }
                         }
                         else if (event.button.button == SDL_BUTTON_LEFT) {
-                            if (event.button.x >= 200 && event.button.x <= WindowWidth && event.button.y >= 45 && event.button.y <= WindowHeight) {
+                            if (pointerInCanvas) {
                                 if (isWiring) {
                                     Point snapPt = canvas->snapToGrid(canvas->mouseWorldPosition());
                                     bool validConnection = false; std::string eComp = "", ePin = "";
@@ -621,7 +652,7 @@ int main(int, char**) {
 
                                 if (selectedComponent != "None" && !selectedComponent.empty()) {
                                     Point worldTarget = canvas->snapToGrid(canvas->mouseWorldPosition()); std::string prefixStr = "U";
-                                    if (selectedComponent == "Ground") prefixStr = "GND"; else if (selectedComponent == "Battery") prefixStr = "B"; else if (selectedComponent == "Clock Generator") prefixStr = "CLK"; else if (selectedComponent == "Switch") prefixStr = "SW"; else if (selectedComponent == "Push Button") prefixStr = "PB"; else if (selectedComponent == "Potentiometer") prefixStr = "RV"; else if (selectedComponent == "Colored LED") prefixStr = "LED"; else if (selectedComponent == "7-Segment Display") prefixStr = "SEG"; else { char prefix = std::toupper(selectedComponent[0]); prefixStr = std::string(1, prefix); }
+                                    if (selectedComponent == "Ground") prefixStr = "GND"; else if (selectedComponent == "Battery") prefixStr = "B"; else if (selectedComponent == "Clock Generator") prefixStr = "CLK"; else if (selectedComponent == "Switch") prefixStr = "SW"; else if (selectedComponent == "Push Button") prefixStr = "PB"; else if (selectedComponent == "Potentiometer") prefixStr = "RV"; else if (selectedComponent == "Colored LED") prefixStr = "LED"; else if (selectedComponent == "7-Segment Display") prefixStr = "SEG"; else if (selectedComponent == "Microcontroller") prefixStr = "MCU"; else if (selectedComponent == "External Memory") prefixStr = "MEM"; else { char prefix = std::toupper(selectedComponent[0]); prefixStr = std::string(1, prefix); }
                                     componentCounters[prefixStr]++; std::string finalId = prefixStr + std::to_string(componentCounters[prefixStr]);
                                     placedComponents.emplace_back(selectedComponent, finalId, "", worldTarget);
                                 }
@@ -633,7 +664,7 @@ int main(int, char**) {
                                     }
 
                                     if (hitCompDetected) {
-                                        if (placedComponents[hitCompIndex].type == "Keypad 4x4") {
+                                        if (placedComponents[hitCompIndex].type == "Keypad 4x4" && simState != SimState::Stopped) {
                                             Point m = worldMouse - placedComponents[hitCompIndex].worldPos;
                                             int rot = placedComponents[hitCompIndex].rotationDegrees;
                                             float lx = m.x, ly = m.y;
@@ -651,15 +682,15 @@ int main(int, char**) {
                                                 placedComponents[hitCompIndex].activeKeypadCol = col;
                                             } else {
                                                 if (!placedComponents[hitCompIndex].isSelected) {
-                                                    if (!(event.key.mod & SDL_KMOD_SHIFT)) { for (auto& c : placedComponents) c.isSelected = false; for (auto& w : circuitWires) w.isSelected = false; }
+                                                    if (!(SDL_GetModState() & SDL_KMOD_SHIFT)) { for (auto& c : placedComponents) c.isSelected = false; for (auto& w : circuitWires) w.isSelected = false; }
                                                     placedComponents[hitCompIndex].isSelected = true;
                                                 }
                                                 isDraggingComponents = true; dragStartWorldMouse = worldMouse;
                                                 for (auto& comp : placedComponents) if (comp.isSelected) comp.dragStartPos = comp.worldPos;
                                             }
                                         }
-                                        else if (placedComponents[hitCompIndex].type == "Switch") { placedComponents[hitCompIndex].interactiveStateBool = !placedComponents[hitCompIndex].interactiveStateBool; }
-                                        else if (placedComponents[hitCompIndex].type == "Push Button") { placedComponents[hitCompIndex].interactiveStateBool = true; }
+                                        else if (placedComponents[hitCompIndex].type == "Switch" && simState != SimState::Stopped) { placedComponents[hitCompIndex].interactiveStateBool = !placedComponents[hitCompIndex].interactiveStateBool; }
+                                        else if (placedComponents[hitCompIndex].type == "Push Button" && simState != SimState::Stopped) { placedComponents[hitCompIndex].interactiveStateBool = true; }
                                         else if (event.button.clicks == 2) {
                                             isPropertiesDialogOpen = true; editingComponentIndex = hitCompIndex;
                                             editLabelBuf = placedComponents[hitCompIndex].labelId; editValueBuf = placedComponents[hitCompIndex].valueStr;
@@ -667,7 +698,7 @@ int main(int, char**) {
                                             maxEditFields = (placedComponents[hitCompIndex].type == "ADC" || placedComponents[hitCompIndex].type == "DAC") ? 3 : 2; activeEditField = 0; isDraggingComponents = false;
                                         } else {
                                             if (!placedComponents[hitCompIndex].isSelected) {
-                                                if (!(event.key.mod & SDL_KMOD_SHIFT)) { for (auto& c : placedComponents) c.isSelected = false; for (auto& w : circuitWires) w.isSelected = false; }
+                                                if (!(SDL_GetModState() & SDL_KMOD_SHIFT)) { for (auto& c : placedComponents) c.isSelected = false; for (auto& w : circuitWires) w.isSelected = false; }
                                                 placedComponents[hitCompIndex].isSelected = true;
                                             }
                                             isDraggingComponents = true; dragStartWorldMouse = worldMouse;
@@ -682,7 +713,7 @@ int main(int, char**) {
                                             if (w.endAnchor.isFree()) { Point pFreeEnd = w.routingPoints.back(); if (pFreeEnd.distanceTo(worldMouse) <= endpointSensitivity) { hitFreeEndpoint = true; hitEndpointWireIndex = i; hitEndpointIsStart = false; break; } }
                                         }
                                         if (hitFreeEndpoint) {
-                                            if (!(event.key.mod & SDL_KMOD_SHIFT)) { for (auto& c : placedComponents) c.isSelected = false; for (auto& w : circuitWires) w.isSelected = false; }
+                                            if (!(SDL_GetModState() & SDL_KMOD_SHIFT)) { for (auto& c : placedComponents) c.isSelected = false; for (auto& w : circuitWires) w.isSelected = false; }
                                             circuitWires[hitEndpointWireIndex].isSelected = true; isDraggingWireEndpoint = true; draggingEndpointWireIndex = hitEndpointWireIndex; draggingEndpointIsStart = hitEndpointIsStart; continue;
                                         }
 
@@ -693,12 +724,12 @@ int main(int, char**) {
                                         }
 
                                         if (hitWireDetected) {
-                                            if (!(event.key.mod & SDL_KMOD_SHIFT)) { for (auto& c : placedComponents) c.isSelected = false; for (auto& w : circuitWires) w.isSelected = false; }
+                                            if (!(SDL_GetModState() & SDL_KMOD_SHIFT)) { for (auto& c : placedComponents) c.isSelected = false; for (auto& w : circuitWires) w.isSelected = false; }
                                             circuitWires[hitWireIndex].isSelected = true;
                                             isDraggingWire = true; draggingWireIndex = hitWireIndex; wireDragStartWorldMouse = worldMouse; wireDragStartRoutingPoints = circuitWires[hitWireIndex].routingPoints;
                                         }
                                         else {
-                                            if (!(event.key.mod & SDL_KMOD_SHIFT)) { for (auto& c : placedComponents) c.isSelected = false; for (auto& w : circuitWires) w.isSelected = false; }
+                                            if (!(SDL_GetModState() & SDL_KMOD_SHIFT)) { for (auto& c : placedComponents) c.isSelected = false; for (auto& w : circuitWires) w.isSelected = false; }
                                             isSelectDragging = true; selectDragStartScreen = { static_cast<float>(event.button.x), static_cast<float>(event.button.y) }; visualSelectBox = { static_cast<float>(event.button.x), static_cast<float>(event.button.y), 0.0f, 0.0f };
                                         }
                                     }
@@ -735,8 +766,8 @@ int main(int, char**) {
                             }
                             else if (isSelectDragging) {
                                 isSelectDragging = false;
-                                Point worldStart = canvas->screenToWorld({ visualSelectBox.x - 200.0f, visualSelectBox.y - 45.0f });
-                                Point worldEnd = canvas->screenToWorld({ (visualSelectBox.x + visualSelectBox.w) - 200.0f, (visualSelectBox.y + visualSelectBox.h) - 45.0f });
+                                Point worldStart = canvas->screenToWorld({ visualSelectBox.x - sidebarWidth, visualSelectBox.y - toolbarHeight });
+                                Point worldEnd = canvas->screenToWorld({ (visualSelectBox.x + visualSelectBox.w) - sidebarWidth, (visualSelectBox.y + visualSelectBox.h) - toolbarHeight });
                                 float minX = std::min(worldStart.x, worldEnd.x), maxX = std::max(worldStart.x, worldEnd.x);
                                 float minY = std::min(worldStart.y, worldEnd.y), maxY = std::max(worldStart.y, worldEnd.y);
 
@@ -784,27 +815,28 @@ int main(int, char**) {
             }
         }
 
-        int currentW, currentH; SDL_GetWindowSize(window, &currentW, &currentH);
-
         switch (currentState) {
             case AppState::MainMenu: startMenu.render(renderer, font); break;
             case AppState::NewProject:
                 if (canvasRenderer) {
-                    SDL_Rect canvasViewport{ 200, 45, currentW - 200, currentH - 45 }; SDL_SetRenderViewport(renderer, &canvasViewport);
-                    canvasRenderer->renderSDL(renderer, font, currentW - 200, currentH - 45);
+                    SDL_Rect canvasViewport{ static_cast<int>(sidebarWidth), static_cast<int>(toolbarHeight),
+                                             std::max(1, windowWidth - static_cast<int>(sidebarWidth)),
+                                             std::max(1, windowHeight - static_cast<int>(toolbarHeight)) };
+                    SDL_SetRenderViewport(renderer, &canvasViewport);
+                    canvasRenderer->renderSDL(renderer, font, canvasViewport.w, canvasViewport.h);
                     canvasRenderer->renderWiresSDL(renderer, circuitWires, simState != SimState::Stopped);
                     canvasRenderer->renderComponentsSDL(renderer, font, placedComponents);
                     SDL_SetRenderViewport(renderer, nullptr); toolbar.render(renderer, font); compLib.render(renderer, font, selectedComponent);
 
                     if (simState == SimState::Running) {
                         std::string timeStr = "Time: " + std::to_string(simTimeMs / 1000.0f) + "s";
-                        renderText(renderer, font, timeStr, currentW - 280.0f, 60.0f, {0, 180, 80, 255});
+                        renderText(renderer, font, timeStr, windowWidth - 280.0f, 60.0f, {0, 180, 80, 255});
                     } else if (simState == SimState::Paused) {
                         std::string pauseStr = "PAUSED (Time: " + std::to_string(simTimeMs / 1000.0f) + "s)";
-                        renderText(renderer, font, pauseStr, currentW - 280.0f, 60.0f, {240, 180, 40, 255});
+                        renderText(renderer, font, pauseStr, windowWidth - 280.0f, 60.0f, {240, 180, 40, 255});
                     }
 
-                    if (isWireModeActive) renderText(renderer, font, "WIRE MODE [Press ESC to cancel]", currentW / 2.0f + 100.0f, 60.0f, {0, 180, 80, 255});
+                    if (isWireModeActive) renderText(renderer, font, "WIRE MODE [Press ESC to cancel]", windowWidth / 2.0f + 100.0f, 60.0f, {0, 180, 80, 255});
 
                     if (isSelectDragging) {
                         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND); SDL_SetRenderDrawColor(renderer, 0, 120, 215, 45); SDL_RenderFillRect(renderer, &visualSelectBox);
@@ -814,15 +846,15 @@ int main(int, char**) {
                     if (isPropertiesDialogOpen && editingComponentIndex >= 0 && editingComponentIndex < static_cast<int>(placedComponents.size())) {
                         const auto& comp = placedComponents[editingComponentIndex];
                         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND); SDL_SetRenderDrawColor(renderer, 0, 0, 0, 180);
-                        SDL_FRect screenRect{0, 0, static_cast<float>(currentW), static_cast<float>(currentH)}; SDL_RenderFillRect(renderer, &screenRect);
+                        SDL_FRect screenRect{0, 0, static_cast<float>(windowWidth), static_cast<float>(windowHeight)}; SDL_RenderFillRect(renderer, &screenRect);
                         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 
                         float dialogH = (maxEditFields == 3) ? 320.0f : 240.0f;
-                        SDL_FRect dialogRect{ currentW / 2.0f - 180.0f, currentH / 2.0f - dialogH/2.0f, 360.0f, dialogH };
+                        SDL_FRect dialogRect{ windowWidth / 2.0f - 180.0f, windowHeight / 2.0f - dialogH/2.0f, 360.0f, dialogH };
                         SDL_SetRenderDrawColor(renderer, 45, 55, 75, 255); SDL_RenderFillRect(renderer, &dialogRect);
                         SDL_SetRenderDrawColor(renderer, 100, 110, 130, 255); SDL_RenderRect(renderer, &dialogRect);
 
-                        std::string titleStr = comp.type + " Properties"; renderText(renderer, font, titleStr, currentW / 2.0f, dialogRect.y + 15.0f, {255, 255, 255, 255});
+                        std::string titleStr = comp.type + " Properties"; renderText(renderer, font, titleStr, windowWidth / 2.0f, dialogRect.y + 15.0f, {255, 255, 255, 255});
                         renderText(renderer, font, "Designator Part Label:", dialogRect.x + 20.0f, dialogRect.y + 55.0f, {200, 210, 230, 255}, false);
                         SDL_FRect labelBoxRect{ dialogRect.x + 20.0f, dialogRect.y + 82.0f, dialogRect.w - 40.0f, 32.0f };
                         SDL_SetRenderDrawColor(renderer, 24, 28, 36, 255); SDL_RenderFillRect(renderer, &labelBoxRect);
@@ -831,7 +863,7 @@ int main(int, char**) {
                         renderText(renderer, font, dispLabel, labelBoxRect.x + 8.0f, labelBoxRect.y + 4.0f, {255, 255, 255, 255}, false);
 
                         std::string valPrompt = "Technical Value Specification:";
-                        if (comp.type == "Resistor") valPrompt = "Resistance Value (Ohm):"; else if (comp.type == "Capacitor") valPrompt = "Capacitance (Farad):"; else if (comp.type == "DC Source" || comp.type == "AC Source") valPrompt = "Source Voltage (Volt):"; else if (comp.type == "Inductor") valPrompt = "Inductance Value (Henry):"; else if (comp.type == "Colored LED") valPrompt = "LED Visual Glow Color (Red, Green, Blue):"; else if (comp.type == "7-Segment Display") valPrompt = "Active Segment Mask Hex Byte (e.g. 0x4F):"; else if (comp.type == "ADC" || comp.type == "DAC") valPrompt = "Resolution (Bits):"; else if (comp.coreComponent && comp.coreComponent->getComponentClass() == ComponentClass::DigitalLogic) valPrompt = "Propagation Delay Parameter (ns):";
+                        if (comp.type == "Resistor") valPrompt = "Resistance Value (Ohm):"; else if (comp.type == "Capacitor") valPrompt = "Capacitance (Farad):"; else if (comp.type == "DC Source" || comp.type == "AC Source") valPrompt = "Source Voltage (Volt):"; else if (comp.type == "Inductor") valPrompt = "Inductance Value (Henry):"; else if (comp.type == "Colored LED") valPrompt = "LED Visual Glow Color (Red, Green, Blue):"; else if (comp.type == "7-Segment Display") valPrompt = "Active Segment Mask Hex Byte (e.g. 0x4F):"; else if (comp.type == "ADC" || comp.type == "DAC") valPrompt = "Resolution (Bits):"; else if (comp.type == "Microcontroller") valPrompt = "Intel HEX Firmware Path:"; else if (comp.type == "External Memory") valPrompt = "Memory Size (bytes):"; else if (comp.coreComponent && comp.coreComponent->getComponentClass() == ComponentClass::DigitalLogic) valPrompt = "Propagation Delay Parameter (ns):";
 
                         renderText(renderer, font, valPrompt, dialogRect.x + 20.0f, dialogRect.y + 125.0f, {200, 210, 230, 255}, false);
                         SDL_FRect valBoxRect{ dialogRect.x + 20.0f, dialogRect.y + 152.0f, dialogRect.w - 40.0f, 32.0f };
@@ -849,25 +881,25 @@ int main(int, char**) {
                             renderText(renderer, font, dispDelay, delayBoxRect.x + 8.0f, delayBoxRect.y + 4.0f, {255, 255, 255, 255}, false);
                         }
 
-                        renderText(renderer, font, "TAB: Switch | ENTER: Confirm | ESC: Cancel", currentW / 2.0f, dialogRect.y + dialogH - 35.0f, {150, 160, 180, 255});
+                        renderText(renderer, font, "TAB: Switch | ENTER: Confirm | ESC: Cancel", windowWidth / 2.0f, dialogRect.y + dialogH - 35.0f, {150, 160, 180, 255});
                     }
 
                     if (isSaveDialogOpen) {
                         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND); SDL_SetRenderDrawColor(renderer, 0, 0, 0, 180);
-                        SDL_FRect screenRect{0, 0, static_cast<float>(currentW), static_cast<float>(currentH)}; SDL_RenderFillRect(renderer, &screenRect);
+                        SDL_FRect screenRect{0, 0, static_cast<float>(windowWidth), static_cast<float>(windowHeight)}; SDL_RenderFillRect(renderer, &screenRect);
                         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 
-                        SDL_FRect dialogRect{ currentW / 2.0f - 160.0f, currentH / 2.0f - 80.0f, 320.0f, 160.0f };
+                        SDL_FRect dialogRect{ windowWidth / 2.0f - 160.0f, windowHeight / 2.0f - 80.0f, 320.0f, 160.0f };
                         SDL_SetRenderDrawColor(renderer, 45, 55, 75, 255); SDL_RenderFillRect(renderer, &dialogRect);
                         SDL_SetRenderDrawColor(renderer, 100, 110, 130, 255); SDL_RenderRect(renderer, &dialogRect);
-                        renderText(renderer, font, "Enter Project Name:", currentW / 2.0f, dialogRect.y + 20.0f, {255, 255, 255, 255});
+                        renderText(renderer, font, "Enter Project Name:", windowWidth / 2.0f, dialogRect.y + 20.0f, {255, 255, 255, 255});
 
                         SDL_FRect inputRect{ dialogRect.x + 20.0f, dialogRect.y + 60.0f, dialogRect.w - 40.0f, 40.0f };
                         SDL_SetRenderDrawColor(renderer, 24, 28, 36, 255); SDL_RenderFillRect(renderer, &inputRect);
                         SDL_SetRenderDrawColor(renderer, 80, 90, 110, 255); SDL_RenderRect(renderer, &inputRect);
                         std::string displayText = saveFileName; if ((SDL_GetTicks() / 500) % 2 == 0) displayText += "_";
                         renderText(renderer, font, displayText, inputRect.x + 10.0f, inputRect.y + 8.0f, {200, 210, 230, 255}, false);
-                        renderText(renderer, font, "Press ENTER to save, ESC to cancel", currentW / 2.0f, dialogRect.y + 120.0f, {150, 160, 180, 255});
+                        renderText(renderer, font, "Press ENTER to save, ESC to cancel", windowWidth / 2.0f, dialogRect.y + 120.0f, {150, 160, 180, 255});
                     }
 
                     if (isContextMenuOpen) {
@@ -888,7 +920,7 @@ int main(int, char**) {
                     }
                 }
                 break;
-            default: break;K
+            default: break;
         }
         SDL_RenderPresent(renderer);
     }

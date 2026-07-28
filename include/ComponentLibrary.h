@@ -10,8 +10,12 @@ class ComponentLibrary {
 public:
     ComponentLibrary(float x, float y, float width, float height);
 
-    void handleEvent(const SDL_Event& event, std::string& selectedComponent);
+    bool handleEvent(const SDL_Event& event, std::string& selectedComponent);
     void render(SDL_Renderer* renderer, TTF_Font* font, const std::string& selectedComponent) const;
+    void setBounds(float x, float y, float width, float height);
+    bool contains(float screenX, float screenY) const;
+    bool containsScrollableArea(float screenX, float screenY) const;
+    bool isSearchFocused() const { return isSearchFocused_; }
 
     // دو تابع جدید برای ارسال و دریافت لیست قطعات جهت ذخیره/بازیابی
     const std::vector<std::string>& getActiveList() const { return activeList_; }

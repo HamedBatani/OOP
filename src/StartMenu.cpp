@@ -9,8 +9,6 @@
 #include <string>
 
 namespace {
-    constexpr int WindowWidth = 800;
-    constexpr int WindowHeight = 600;
     constexpr int ButtonWidth = 280;
     constexpr int ButtonHeight = 46;
     constexpr int ButtonSpacing = 16;
@@ -51,11 +49,11 @@ namespace {
         return stream.str();
     }
 
-    void drawFaintGrid(SDL_Renderer* renderer) {
+    void drawFaintGrid(SDL_Renderer* renderer, int width, int height) {
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 8); // 3% opacity
-        for(int x = 0; x < WindowWidth; x += 30) SDL_RenderLine(renderer, x, 0, x, WindowHeight);
-        for(int y = 0; y < WindowHeight; y += 30) SDL_RenderLine(renderer, 0, y, WindowWidth, y);
+        for(int x = 0; x < width; x += 30) SDL_RenderLine(renderer, x, 0, x, height);
+        for(int y = 0; y < height; y += 30) SDL_RenderLine(renderer, 0, y, width, y);
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
     }
 
@@ -74,6 +72,15 @@ const char* pageSizeTypeToString(PageSizeType type) {
 }
 
 StartMenu::StartMenu() : selectedPageSize_{210.0, 297.0, PageSizeType::A4}, recentProjects_{"circuit.txt"}, currentView_(MenuView::Main), requestedState_(AppState::MainMenu), shouldLoadProject_(false) {
+    initializeButtons();
+}
+
+void StartMenu::setViewportSize(int width, int height) {
+    width = std::max(width, 640);
+    height = std::max(height, 520);
+    if (width == viewportWidth_ && height == viewportHeight_) return;
+    viewportWidth_ = width;
+    viewportHeight_ = height;
     initializeButtons();
 }
 
@@ -112,12 +119,14 @@ void StartMenu::render(SDL_Renderer* renderer, TTF_Font* font) const {
     SDL_SetRenderDrawColor(renderer, BackgroundColor.r, BackgroundColor.g, BackgroundColor.b, BackgroundColor.a);
     SDL_RenderClear(renderer);
 
-    drawFaintGrid(renderer); // اضافه شدن Pattern محو مهندسی
+    drawFaintGrid(renderer, viewportWidth_, viewportHeight_);
 
     // لوگو و عنوان بزرگ بالای همه منوها
-    drawLightningLogo(renderer, WindowWidth / 2.0f, 60.0f);
-    renderText(renderer, font, "Circuit Design Application", WindowWidth / 2.0f, 95.0f, TitleColor, true, 1.4f);
-    renderText(renderer, font, "Professional Circuit Design Environment", WindowWidth / 2.0f, 138.0f, SubtitleColor, true, 0.85f);
+    const float centerX = viewportWidth_ / 2.0f;
+    const float topOffset = std::max(0.0f, (viewportHeight_ - 600.0f) * 0.12f);
+    drawLightningLogo(renderer, centerX, 60.0f + topOffset);
+    renderText(renderer, font, "Circuit Design Application", centerX, 95.0f + topOffset, TitleColor, true, 1.4f);
+    renderText(renderer, font, "Professional Circuit Design Environment", centerX, 138.0f + topOffset, SubtitleColor, true, 0.85f);
 
     switch (currentView_) {
         case MenuView::Main: renderMainMenu(renderer, font); break;
@@ -127,8 +136,8 @@ void StartMenu::render(SDL_Renderer* renderer, TTF_Font* font) const {
     }
 
     // فوتر شیک و حرفه‌ای
-    renderText(renderer, font, "Version 1.0.0", 25.0f, WindowHeight - 35.0f, SubtitleColor, false, 0.75f);
-    renderText(renderer, font, "Open Source Circuit Simulator (c) 2026", WindowWidth - 280.0f, WindowHeight - 35.0f, SubtitleColor, false, 0.75f);
+    renderText(renderer, font, "Version 1.0.0", 25.0f, viewportHeight_ - 35.0f, SubtitleColor, false, 0.75f);
+    renderText(renderer, font, "Open Source Circuit Simulator (c) 2026", viewportWidth_ - 330.0f, viewportHeight_ - 35.0f, SubtitleColor, false, 0.75f);
 }
 
 const PageSize& StartMenu::getSelectedPageSize() const { return selectedPageSize_; }
@@ -136,8 +145,9 @@ AppState StartMenu::getRequestedState() const { return requestedState_; }
 void StartMenu::resetRequestedState() { requestedState_ = AppState::MainMenu; }
 
 void StartMenu::initializeButtons() {
-    const float x = static_cast<float>((WindowWidth - ButtonWidth) / 2);
-    float y = 190.0f;
+    const float x = static_cast<float>((viewportWidth_ - ButtonWidth) / 2);
+    const float topOffset = std::max(0.0f, (viewportHeight_ - 600.0f) * 0.12f);
+    float y = 190.0f + topOffset;
 
     // اختصاص رنگ‌های متمایز و آیکون به دکمه‌های منوی اصلی
     mainButtons_.clear();
@@ -147,24 +157,24 @@ void StartMenu::initializeButtons() {
     mainButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight}, "Recent Projects", BtnNormal, BtnHover, ButtonTextColor, IconType::Clock); y += ButtonHeight + ButtonSpacing;
     mainButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight}, "Exit", BtnRedNormal, BtnRedHover, ButtonTextColor, IconType::ExitIcon);
 
-    y = 260.0f;
+    y = 260.0f + topOffset;
     pageSizeButtons_.clear();
     pageSizeButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight}, "A4", BtnNormal, BtnHover, ButtonTextColor); y += ButtonHeight + ButtonSpacing;
     pageSizeButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight}, "A3", BtnNormal, BtnHover, ButtonTextColor); y += ButtonHeight + ButtonSpacing;
     pageSizeButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight}, "Custom", BtnNormal, BtnHover, ButtonTextColor); y += ButtonHeight + ButtonSpacing;
     pageSizeButtons_.emplace_back(SDL_FRect{x, y, ButtonWidth, ButtonHeight}, "Back", BtnRedNormal, BtnRedHover, ButtonTextColor, IconType::Menu);
 
-    recentProjectButtons_.clear(); float rpY = 200.0f;
+    recentProjectButtons_.clear(); float rpY = 200.0f + topOffset;
     for (const auto& proj : recentProjects_) {
         recentProjectButtons_.emplace_back(SDL_FRect{x, rpY, ButtonWidth, ButtonHeight}, proj, BtnNormal, BtnHover, ButtonTextColor, IconType::NewFile); rpY += ButtonHeight + ButtonSpacing;
     }
-    recentProjectButtons_.emplace_back(SDL_FRect{x, 470.0f, ButtonWidth, ButtonHeight}, "Back", BtnRedNormal, BtnRedHover, ButtonTextColor, IconType::Menu);
+    recentProjectButtons_.emplace_back(SDL_FRect{x, viewportHeight_ - 130.0f, ButtonWidth, ButtonHeight}, "Back", BtnRedNormal, BtnRedHover, ButtonTextColor, IconType::Menu);
 
-    openProjectButtons_.clear(); float opY = 200.0f;
+    openProjectButtons_.clear(); float opY = 200.0f + topOffset;
     for (const auto& proj : recentProjects_) {
         openProjectButtons_.emplace_back(SDL_FRect{x, opY, ButtonWidth, ButtonHeight}, proj, BtnNormal, BtnHover, ButtonTextColor, IconType::Folder); opY += ButtonHeight + ButtonSpacing;
     }
-    openProjectButtons_.emplace_back(SDL_FRect{x, 470.0f, ButtonWidth, ButtonHeight}, "Back", BtnRedNormal, BtnRedHover, ButtonTextColor, IconType::Menu);
+    openProjectButtons_.emplace_back(SDL_FRect{x, viewportHeight_ - 130.0f, ButtonWidth, ButtonHeight}, "Back", BtnRedNormal, BtnRedHover, ButtonTextColor, IconType::Menu);
 }
 
 void StartMenu::renderMainMenu(SDL_Renderer* renderer, TTF_Font* font) const {
@@ -173,25 +183,27 @@ void StartMenu::renderMainMenu(SDL_Renderer* renderer, TTF_Font* font) const {
 
 void StartMenu::renderPageSizeSelection(SDL_Renderer* renderer, TTF_Font* font) const {
     // رسم "کارت" شیک برای نمایش سایز صفحه بجای متن ساده
-    SDL_FRect cardRect{WindowWidth/2.0f - 140.0f, 175.0f, 280.0f, 65.0f};
+    const float centerX = viewportWidth_ / 2.0f;
+    const float topOffset = std::max(0.0f, (viewportHeight_ - 600.0f) * 0.12f);
+    SDL_FRect cardRect{centerX - 140.0f, 175.0f + topOffset, 280.0f, 65.0f};
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(renderer, 45, 55, 75, 150); SDL_RenderFillRect(renderer, &cardRect);
     SDL_SetRenderDrawColor(renderer, BtnBlueHover.r, BtnBlueHover.g, BtnBlueHover.b, 255); SDL_RenderRect(renderer, &cardRect);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 
-    renderText(renderer, font, "Active Canvas Size", WindowWidth / 2.0f, 185.0f, SubtitleColor, true, 0.7f);
-    renderText(renderer, font, pageSizeToDisplayText(selectedPageSize_), WindowWidth / 2.0f, 205.0f, TitleColor, true, 0.9f);
+    renderText(renderer, font, "Active Canvas Size", centerX, 185.0f + topOffset, SubtitleColor, true, 0.7f);
+    renderText(renderer, font, pageSizeToDisplayText(selectedPageSize_), centerX, 205.0f + topOffset, TitleColor, true, 0.9f);
 
     for (const auto& button : pageSizeButtons_) button.render(renderer, font);
 }
 
 void StartMenu::renderRecentProjects(SDL_Renderer* renderer, TTF_Font* font) const {
-    if (recentProjects_.empty()) renderText(renderer, font, "No recent projects found.", WindowWidth / 2.0f, 200.0f, SubtitleColor, true);
+    if (recentProjects_.empty()) renderText(renderer, font, "No recent projects found.", viewportWidth_ / 2.0f, 200.0f, SubtitleColor, true);
     for (const auto& button : recentProjectButtons_) button.render(renderer, font);
 }
 
 void StartMenu::renderOpenProject(SDL_Renderer* renderer, TTF_Font* font) const {
-    renderText(renderer, font, "Select a file to load:", WindowWidth / 2.0f, 170.0f, SubtitleColor, true, 0.85f);
+    renderText(renderer, font, "Select a file to load:", viewportWidth_ / 2.0f, 170.0f, SubtitleColor, true, 0.85f);
     for (const auto& button : openProjectButtons_) button.render(renderer, font);
 }
 

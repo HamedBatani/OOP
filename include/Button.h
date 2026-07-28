@@ -17,6 +17,7 @@ public:
            IconType icon = IconType::None);
 
     void setHovered(bool hovered);
+    void setRect(const SDL_FRect& rect);
     bool contains(float mouseX, float mouseY) const;
     void render(SDL_Renderer* renderer, TTF_Font* font) const;
 

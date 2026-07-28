@@ -18,6 +18,7 @@ public:
     void handleEvent(const SDL_Event& event);
     void updateHoverState(float mouseX, float mouseY);
     void render(SDL_Renderer* renderer, TTF_Font* font) const;
+    void setViewportSize(int width, int height);
 
     const PageSize& getSelectedPageSize() const;
     AppState getRequestedState() const;
@@ -63,4 +64,6 @@ private:
     MenuView currentView_;
     AppState requestedState_;
     bool shouldLoadProject_{false};
+    int viewportWidth_{800};
+    int viewportHeight_{600};
 };
